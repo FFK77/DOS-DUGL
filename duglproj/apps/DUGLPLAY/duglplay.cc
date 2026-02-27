@@ -59,6 +59,11 @@
     Increased slightly the size of the video frame (GUI)
     Better gfx for buttons (GUI)
     Added Fit Screen option with F11 keyboard
+    27 February 2026:
+    Integrate last DJGPP build of FFMPEG  version 5.1.2
+    several upgrades according to new DUGL 2.0WIP
+    Config: Add [KeyboardMap] to select keyboard layout file
+    ..
 */
 
 #include <stdio.h>
@@ -67,10 +72,11 @@
 #include <string.h>
 #include <dir.h>
 #include <math.h>
-#include <dpmi.h>
 
 #include <dugl.h>
 #include <duglplus.h>
+
+
 // bmpeg includes
 #include <bmpeg.h>
 // theora includes
@@ -80,6 +86,16 @@
 extern "C" {
 #endif
 
+// FFMPEG
+#include <libavcodec/avcodec.h>
+#include <libswscale/swscale.h>
+#include <libavformat/avformat.h>
+#include <libavutil/pixfmt.h>
+#include <libavutil/frame.h>
+#include <libavutil/imgutils.h>
+#include <zlib.h>
+
+// internal
 void ScanYUV2RGB16(void *YSrcPtr, void *USrcPtr, void *VSrcPtr, void *RGB16DstPtr, unsigned int PixelsSize);
 void Scan422YUV2RGB16(void *YSrcPtr, void *USrcPtr, void *VSrcPtr, void *RGB16DstPtr, unsigned int PixelsSize);
 
@@ -126,9 +142,13 @@ size_t size;
 bool VidOpen=false,
     VidPause=false,
     VidEnded=false,
-    FrameAvlbl=false;
-float VideoFps;
-unsigned int sizeVidFile, readVidFileBytes;
+    FrameAvlbl=false,
+    closeOnVidEnded=false;
+float VideoFps = 0.0f;
+float VideoTime = 0.0f;
+unsigned int sizeVidFile = 0, readVidFileBytes = 0;
+int videoWidth = 0, videoHeight = 0;
+int videoFramesCount = 0;
 int framenum,
     PosSynch,
     frameskipped=0;
@@ -198,6 +218,37 @@ int GetNextFrameYUV4MPEG(DgSurf *S16, unsigned int nFramesToDrop);
 void CloseVidYUV4MPEG();
 
 // -----------------------
+// FFMPEG GLOBAL
+AVFormatContext* pFormatCtx = NULL;
+// FFmpeg codec context.
+AVCodecContext* pVideoCodecCtx = NULL;
+// FFmpeg codec for video.
+const AVCodec* pVideoCodec = NULL;
+// FFmpeg parser codec for video.
+AVCodecParserContext *pVideoCodecParser = NULL;
+// FFmpeg context convert image.
+struct SwsContext *pImgConvertCtx = NULL;
+// FFmpeg video stream
+AVStream *video_stream = NULL;
+// Video stream number in file
+int videoStreamIndex = -1;
+static enum AVPixelFormat pix_fmt;
+
+static uint8_t *video_dst_data[4] = {NULL};
+static int      video_dst_linesize[4];
+static int      video_dst_bufsize;
+static AVFrame  *videoFrame = NULL;
+static AVPacket *pkt = NULL;
+static bool videoSwapUpDown = false; // rotate 180
+int FFZone = 0, FFFail = 0;
+
+
+// return 0 if success, code error if failed
+int OpenVidFFMPEG(char *FileName);
+// return 1 if new frame found, 0 else
+int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop);
+// close an opened video
+void CloseVidFFMPEG();
 
 //******************
 // FONT
@@ -217,7 +268,7 @@ char SynchBuff[SIZE_SYNCH_BUFF];
 // Windows Handler
 WinHandler *WH;
 // Main window -------------------------------
-String sMainWinName("DUGL Video Player 0.51");
+String sMainWinName("DUGL Video Player 1.0 alpha 1");
 MainWin *MWDPlayer;
 GraphBox *GphBVideo;
 Menu *MWMn;
@@ -244,9 +295,9 @@ void OnBtPlayClick();
 char *scrFileName="DUGLPLYR.BMP";
 // file filer string
 char *TSFBName[]={ "All supported Videos",
-     "MPEG1/2", "Theora/Ogg/Ogv", "YUV4MPEG", "All Files(*.*)" };
-char *TSFBMask[]={ "*.mpg|*.mpeg|*.m2v|*.m1v|*.mpe|*.mpv|*.dat|*.ogv|*.ogg|*.oga|*.y4m",
-     "*.mpg|*.mpeg|*.m2v|*.m1v|*.mpe|*.mpv|*.dat", "*.ogv|*.ogg|*.oga", "*.y4m", "*.*" };
+     "MPEG1/2/4", "Theora/Ogg/Ogv", "YUV4MPEG", "All Files(*.*)" };
+char *TSFBMask[]={ "*.mpg|*.mpeg|*.m2v|*.m1v|*.mpe|*.mpv|*.dat|*.ogv|*.ogg|*.oga|*.y4m|*.mp4|*.avi|*.mov|*.wmv|*.flv|*.webm|*.3gp|*.vob",
+     "*.mpg|*.mpeg|*.m2v|*.m1v|*.mpe|*.mpv|*.dat|*.mp4|*.avi|*.mov|*.wmv", "*.ogv|*.ogg|*.oga", "*.y4m", "*.*" };
 ListString LSMpgName(5,TSFBName),LSMpgMask(5,TSFBMask);
 
 // Main Menu -------
@@ -280,7 +331,6 @@ GraphBox *GphBAbout;
 Button *BtOkAbout;
 // events
 void BtOkAboutClick(),GphBDrawAbout(GraphBox *Me),OnGphBScanAbout(GraphBox *Me);
-DgSurf *ImgLicense;
 // data
 int  RotPosSynch;
 char RotSynchBuff[SIZE_SYNCH_BUFF];
@@ -298,20 +348,16 @@ bool IsFileExist(const char *fname);
 void LoadConfig();
 
 int main (int argc, char ** argv) {
-    if (!DgInit())
-      { printf("DUGL init error\n"); exit(-1); }
+    if (!DgInit()) {
+        printf("DUGL init error\n");
+        exit(-1);
+    }
 
     LoadConfig();
 
-
-    // init video mode
-    if (!InitVesaMode(screenX,screenY,16,1)) {
-       if(screenX!=640 || screenY!=480) {
-         screenX=640; screenY=480;
-         if (!InitVesaMode(screenX,screenY,16,1)) {
-            printf("VESA mode error\n"); DgQuit(); exit(-1);
-         }
-       }
+    if (!InstallKeyboard()) {
+       DgQuit(); DgUninstallTimer();
+       printf("Keyboard error\n");  exit(-1);
     }
 
     if (CreateSurf(&rendSurf16, screenX, screenY, 16)==0) {
@@ -335,21 +381,6 @@ int main (int argc, char ** argv) {
     if (LoadBMP16(&ImgExit,"gfx/shut.bmp")==0) {
       printf("Error loading shut.bmp\n"); exit(-1);
     }
-    if (LoadBMP16(&ImgLicense,"gfx/license.bmp")==0) {
-      printf("Error loading license.bmp\n"); exit(-1);
-    }
-    FREE_MMX();
-
-    if (argc>=2) {
-      if (OpenVid(argv[1])!=0) {
-        printf ("error opening video file: \"%s\".\n", argv[1]);
-        exit(-1);
-      }
-      else
-        TNM[6].Activ = 1; // enable menu close
-    }
-    else
-      EnableGUI = 1; // enable GUI if no param
 
     if (!LoadKbMAP(&KM,keybMapFileName)) {
       printf("Error loading keyboard map '%s'\n", keybMapFileName); exit(-1); }
@@ -360,12 +391,8 @@ int main (int argc, char ** argv) {
 
     // init the lib
 
-    if (!DgInstallTimer(100)) {
+    if (!DgInstallTimer(250)) {
        DgQuit(); printf("Timer error\n"); exit(-1);
-    }
-    if (!InstallKeyboard()) {
-       DgQuit(); DgUninstallTimer();
-       printf("Keyboard error\n");  exit(-1);
     }
     if (!SetKbMAP(KM)) {
        DgUninstallTimer(); UninstallKeyboard(); DgQuit();
@@ -373,6 +400,25 @@ int main (int argc, char ** argv) {
     }
     MouseSupported = (InstallMouse()!=0);
 
+    // init video mode
+    if (!InitVesaMode(screenX,screenY,16,1)) {
+       if(screenX!=640 || screenY!=480) {
+         screenX=640; screenY=480;
+         if (!InitVesaMode(screenX,screenY,16,1)) {
+            printf("VESA mode error\n"); DgQuit(); exit(-1);
+         }
+       }
+    }
+    if (argc>=2) {
+      if (OpenVid(argv[1])!=0) {
+        printf ("error opening video file: \"%s\".\n", argv[1]);
+        exit(-1);
+      }
+      else
+        TNM[6].Activ = 1; // enable menu close
+    }
+    else
+      EnableGUI = 1; // enable GUI if no param
 
     DgSetCurSurf(&VSurf[0]);
     Clear16(0); // clear by black
@@ -387,14 +433,12 @@ int main (int argc, char ** argv) {
        // set mouse view
        GetSurfView(&VSurf[0],&MsV);
        SetMouseView(&MsV);
-       FREE_MMX();
        SetMousePos(DefMsPosX*VSurf[0].ResH,DefMsPosY*VSurf[0].ResV);
     }
     else {
        DestroySurf(MsPtr16);
        DestroySurf(MsPtr);
     }
-    FREE_MMX();
 
     //** GUI ************************************************
     // create the winHandler
@@ -432,13 +476,11 @@ int main (int argc, char ** argv) {
 
     // init synch for synching the screen and the opened video
     PosSynch=0;
-    FREE_MMX();
     InitSynch(SynchBuff,&PosSynch,VideoFps);
     UpdatePlayTime();
     // main loop
     for (int j=0;;j++) {
       // synchronise
-      FREE_MMX();
       Synch(SynchBuff,&PosSynch);
       // synch screen display
       float avgFps=SynchAverageTime(SynchBuff),
@@ -448,7 +490,6 @@ int main (int argc, char ** argv) {
 
 
       DgSetCurSurf(rendSurf16);
-      FREE_MMX();
       // get next frame if it's time
       if (VidOpen) {
         if (VidPause==1 && PosSynch!=framenum) {
@@ -491,10 +532,21 @@ int main (int argc, char ** argv) {
 
       // loop ?
       if (VidEnded) {
-        if (VidOpen && CBxLoop->True)
-          OnBtPlayClick();
-        else
-          CloseVid();
+        if (VidOpen) {
+            if(CBxLoop->True) {
+                String saveInputFile = CurVidFile;
+                CloseVid();
+                CurVidFile = saveInputFile;
+                OnBtPlayClick();
+            } else if (!closeOnVidEnded) {
+                if (!VidPause) {
+                    VidPause = true;
+                    UpdatePlayTime();
+                }
+            }
+            else
+              CloseVid();
+        }
       }
 
       // GUI
@@ -555,17 +607,16 @@ int main (int argc, char ** argv) {
         // FULL screen
         if (VidOpen)
         {
-            FREE_MMX();
 
           if(FitVideo)
           {
-            ResizeViewSurf16(Sframe16, 0, 0);
+            ResizeViewSurf16(Sframe16, 0, videoSwapUpDown);
           }
           else {
             Clear16(0); // clear by black
 //            //PutSurf16(Sframe16, (CurSurf.MaxX+CurSurf.MinX-Sframe16->ResH)/2,
             PutSurf16(Sframe16, (CurSurf.MaxX+CurSurf.MinX-Sframe16->ResH)/2,
-                (CurSurf.MaxY+CurSurf.MinY-Sframe16->ResV)/2, 0);
+                (CurSurf.MaxY+CurSurf.MinY-Sframe16->ResV)/2, (videoSwapUpDown) ? INV_VT_PUT : 0);
           }
         }
       }
@@ -575,7 +626,6 @@ int main (int argc, char ** argv) {
         keyCode = WH->Key;
         keyFLAG = WH->KeyFLAG;
         DgSetCurSurf(rendSurf16);
-        FREE_MMX();
         // draw the GUI
         WH->DrawSurf(&CurSurf);
         // draw the mouse pointer
@@ -584,7 +634,6 @@ int main (int argc, char ** argv) {
         // draw the GUI
         //DGWaitRetrace();
         SurfCopy(&VSurf[0], rendSurf16);
-        FREE_MMX();
       } else { // full screen
          if (BlurDisplay) {
             BlurSurf16(blurSurf16,rendSurf16);
@@ -596,22 +645,18 @@ int main (int argc, char ** argv) {
 
          int Xtext,Ytext,widthText;
          if (FullScrShowFps) {
-           FREE_MMX();
            ClearText();
            char text[100];
            SetTextCol(0xffff);
            sprintf(text,"%03i fps",(int)(1.0/avgFps));
-           FREE_MMX();
            Xtext=GetXOutTextMode(text,AJ_RIGHT);
            Ytext=FntY+FntLowPos-1;
            widthText=WidthText(text);
            barblnd16(Xtext,Ytext,Xtext+widthText,Ytext+FntHaut,0|(5<<24));
 
            OutText16Mode(text,AJ_RIGHT);
-           FREE_MMX();
          }
          if (FullScrShowTime) {
-           FREE_MMX();
            ClearText();
            SetTextCol(0xffff);
            Xtext=GetXOutTextMode(playTime,AJ_LEFT);
@@ -620,7 +665,6 @@ int main (int argc, char ** argv) {
            barblnd16(Xtext,Ytext,Xtext+widthText,Ytext+FntHaut,RGB16(0,0,255)|(5<<24));
            OutText16Mode(playTime,AJ_LEFT);
          }
-         FREE_MMX();
          DGWaitRetrace();
          if (BlurDisplay)
            SurfCopy(&VSurf[0], blurSurf16);
@@ -644,7 +688,6 @@ int main (int argc, char ** argv) {
          }
          if(!bSucc)
             SaveBMP16(&VSurf[0],scrFileName);
-        FREE_MMX();
       }
     }
 
@@ -665,7 +708,6 @@ void DGWaitRetrace() {
      WaitRetrace(); // VGA wait retrace
   else
      ViewSurfWaitVR(0);
-  FREE_MMX();
 }
 
 bool IsFileExist(const char *fname) {
@@ -681,8 +723,11 @@ void UpdatePlayTime() {
   if (VidOpen) {
     iplayTime=(unsigned int)(float(framenum-frameskipped)/VideoFps);
     sprintf(playTime,"%02u:%02u:%02u",(iplayTime/3600),(iplayTime/60)%60,iplayTime%60);
-    if(sizeVidFile>0)
-      videoAdv=((((double)readVidFileBytes)*100.0) / (double)(sizeVidFile));
+    if (videoFramesCount>0) {
+      videoAdv=(unsigned int)((double)(framenum-frameskipped)*100.0 / (double)(videoFramesCount));
+    } else if(sizeVidFile>0) {
+      videoAdv=(unsigned int)((((double)readVidFileBytes)*100.0) / (double)(sizeVidFile));
+    }
     else
       videoAdv=0;
   }
@@ -744,7 +789,6 @@ void OnMenuPauseCont() {
 }
 
 void OnMenuAbout() {
-    FREE_MMX();
     InitSynch(RotSynchBuff,&RotPosSynch,300.0);
     MWAbout->Show(); // show about
     MWAbout->Enable(); // set as the active window
@@ -765,7 +809,6 @@ void GphBDrawVideo(GraphBox *Me) {
                   (GphBVideo->VGraphBox.MaxY+GphBVideo->VGraphBox.MinY-Sframe16->ResV)/2,
                   0);
       }
-      FREE_MMX();
       return;
    }
    ClearSurf16(WH->m_GraphCtxt->WinGrisF);
@@ -837,46 +880,36 @@ void OnGphBScanAbout(GraphBox *Me) {
 
 }
 void GphBDrawAbout(GraphBox *Me) {
-   String text;
-   int xImgLic,yImgLic;
-   ClearSurf16(WH->m_GraphCtxt->WinNoir);
+   char midText[256] = "";
+
+   ClearSurf16(RGB16(0,0,0));
    ClearText();
    SetTextCol(WH->m_GraphCtxt->WinBlanc);
    OutText16Mode("\n", AJ_MID);
-   FntCol=0x3F<<5; // green
-   OutText16Mode("DUGL Player 0.51 - DOS Video Player\n", AJ_MID);
-   FntCol=0xFFFF; // white
-   OutText16Mode("(C) By FFK 16 June 2013\n\n", AJ_MID);
+   FntCol=RGB16(0,255,0); // green
+   OutText16Mode("DUGL Player 1.0 Alpha 1 - DOS Video Player\n", AJ_MID);
+   FntCol=RGB16(255,255,255); // white
+   OutText16Mode("(C) By FFK 27 February 2026\n\n", AJ_MID);
    OutText16Mode("Developped using :\n", AJ_MID);
-   FntCol=0x1F; // green
-   sprintf(text.StrPtr,"DUGL %s WIP\n",DUGL_VERSION);
-   OutText16Mode(text.StrPtr, AJ_MID);
-   sprintf(text.StrPtr,"DUGL+ %s\n",DUGLP_VERSION);
-   OutText16Mode(text.StrPtr, AJ_MID);
-   FntCol=0xFFFF; // white
-   OutText16Mode("dugl.50webs.com\n", AJ_MID);
-   FntCol=0x1F; // green
-   OutText16Mode((char*)th_version_string(), AJ_MID);
-   OutText16Mode("\n", AJ_MID);
-   sprintf(text.StrPtr,"BMPEG %s (Improved Berkley)",BMPEG_VERSION);
-   OutText16Mode(text.StrPtr, AJ_MID);
-   FREE_MMX();
+   FntCol=RGB16(255,255,0); // yellow
+   OutText16ModeFormat(AJ_MID, midText, 255,"DUGL %s\n",DUGL_VERSION);
+   FntCol=RGB16(0,255,255); // white
+   OutText16Mode("https://github.com/FFK77/DOS-DUGL\n", AJ_MID);
+   FntCol=RGB16(255,255,0); // yellow
+   OutText16ModeFormat(AJ_MID, midText, 255, "FFMPEG %s\n", av_version_info());
+   FntCol=RGB16(255,255,255); // white
+   OutText16Mode("https://ffmpeg.org/\n\n", AJ_MID);
 
    FntCol=0xFFFF; // white
-   sprintf(text.StrPtr,"VSynch(%s) Smoothing(%s) Interpolate UV(%s)\n",
+   sprintf(midText,"VSynch(%s) Smoothing(%s) Interpolate UV(%s)\n",
         SynchScreen?"ON":"OFF",BlurDisplay?"ON":"OFF",
         InterpolateUV?"ON":"OFF" );
    OutText16Mode("\n", AJ_MID);
-   OutText16Mode(text.StrPtr, AJ_MID);
-   sprintf(text.StrPtr,"Frame dropping(%s) Fit Screen(%s)\n",
+   OutText16Mode(midText, AJ_MID);
+   sprintf(midText,"Frame dropping(%s) Fit Screen(%s)\n",
      DropFrames?"ON":"OFF", FitVideo?"ON":"OFF" );
-   OutText16Mode(text.StrPtr, AJ_MID);
-   FREE_MMX();
+   OutText16Mode(midText, AJ_MID);
 
-   xImgLic=((Me->XC2+Me->XC1)-ImgLicense->ResH)/2+5+cosf(RotPosSynch&255)*5.0;
-   yImgLic=10+sinf(RotPosSynch&255)*5.0;
-   PutMaskSurf16(ImgLicense,xImgLic,yImgLic,0);
-   FREE_MMX();
 }
 
 void LoadConfig()
@@ -1073,9 +1106,7 @@ void CloseVidMPEG()
      framenum=0;
      frameskipped=0;
      countBufferReads=0;
-     FREE_MMX();
      HSldAdv->SetVal(0);
-     UpdatePlayTime();
      CurVidFile="";
    }
 }
@@ -1316,7 +1347,6 @@ void CloseVidOGG() {
      frameskipped=0;
      countBufferReads=0;
      HSldAdv->SetVal(0);
-     UpdatePlayTime();
      CurVidFile="";
    }
 }
@@ -1385,7 +1415,6 @@ int OpenVidYUV4MPEG(char *FileName)
    String strHeader(1024);
    // open the video file
    vidfile = fopen (myFile.StrPtr, "rb");
-      FREE_MMX();
 
    if (vidfile==NULL)
      return 1; // failed to open
@@ -1556,7 +1585,6 @@ int GetNextFrameYUV4MPEG(DgSurf *S16, unsigned int nFramesToDrop)
    unsigned int cntFrames2Drop = nFramesToDrop;
    bool bFoundFrame = false;
    // find frame header
-   FREE_MMX();
    if(vidfile == NULL ||  !VidOpen)
       return 0;
    for(;;)
@@ -1647,9 +1675,7 @@ void CloseVidYUV4MPEG()
      framenum=0;
      frameskipped=0;
      countBufferReads=0;
-     FREE_MMX();
      HSldAdv->SetVal(0);
-     UpdatePlayTime();
      CurVidFile="";
    }
 }
@@ -1662,6 +1688,7 @@ int kindVidOpened = 0; // 0 : none, 1 : MPEG, 2 : OGG, 3 : YUV4MPEG
 int OpenVid(char *FileName)
 {
     int    ret    = 0;
+    int    retFF  = 0;
     String myFile = FileName;
     String InfImg(256);
 
@@ -1670,6 +1697,11 @@ int OpenVid(char *FileName)
     char   tdrv[MAXDRIVE], tpath[MAXDIR], tfile[MAXFILE], text[MAXEXT];
     String sFinalLabel = sMainWinName;
 
+    CloseVid();
+
+    if((retFF=OpenVidFFMPEG(myFile.StrPtr)) == 0)
+       kindVidOpened = 4;
+    else
     if((ret=OpenVidYUV4MPEG(myFile.StrPtr)) == 0)
        kindVidOpened = 3;
     else
@@ -1679,8 +1711,9 @@ int OpenVid(char *FileName)
     if((ret=OpenVidOGG(myFile.StrPtr)) == 0)
        kindVidOpened = 2;
     if (VidOpen && kindVidOpened > 0) {
-      FREE_MMX();
-      sprintf(InfImg.StrPtr,"%ix%i %3.1ffps", Sframe16->ResH, Sframe16->ResV, VideoFps);
+      char errBuff[128]="";
+      av_make_error_string(errBuff, 127, FFFail);
+      sprintf(InfImg.StrPtr,"%ix%i %3.1ffps %3.1f secs", Sframe16->ResH, Sframe16->ResV, VideoFps, VideoTime);
       fnsplit(CurVidFile.StrPtr, tdrv, tpath, tfile, text);
       sFinalLabel = sFinalLabel + '<' + tfile + text + ">" + InfImg;
     }
@@ -1700,6 +1733,8 @@ int GetNextFrame(DgSurf *S16, unsigned int nFramesToDrop)
        return GetNextFrameOGG(S16, nFramesToDrop);
      case 3:
        return GetNextFrameYUV4MPEG(S16, nFramesToDrop);
+     case 4:
+       return GetNextFrameFFMPEG(S16, nFramesToDrop);
      default:
        return 0;
    }
@@ -1716,11 +1751,343 @@ void CloseVid() {
         CloseVidOGG(); break;
       case 3:
         CloseVidYUV4MPEG(); break;
+      case 4:
+        CloseVidFFMPEG(); break;
     }
     kindVidOpened = 0;
+    VideoFps = 0.0f;
+    VideoTime = 0.0f;
+    sizeVidFile = 0;
+    readVidFileBytes = 0;
+    videoWidth = 0;
+    videoHeight = 0;
+    videoFramesCount = 0;
+    framenum = 0;
+    UpdatePlayTime();
   }
-
 }
+// FFMPEG /////////////////////////////
+
+void DestroyFFMPEG(); // internal cleanup
+// return 0 if success, code error if failed
+int OpenVidFFMPEG(char *FileName) {
+    int retfunc = 0;
+
+	// Open media file.
+	if (avformat_open_input(&pFormatCtx, FileName, NULL, NULL) != 0) {
+        DestroyFFMPEG();
+		return 1;
+	}
+	// Get format info.
+	if (avformat_find_stream_info(pFormatCtx, NULL) < 0) {
+        DestroyFFMPEG();
+		return 2;
+	}
+
+    videoStreamIndex = av_find_best_stream(pFormatCtx, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);;
+    VideoTime = (double)(pFormatCtx->duration)/AV_TIME_BASE;
+
+    if (videoStreamIndex < 0) {
+        DestroyFFMPEG();
+        return 3;
+    }
+    AVStream *st;
+    st = pFormatCtx->streams[videoStreamIndex];
+    /* find decoder for the stream */
+    pVideoCodec = avcodec_find_decoder(st->codecpar->codec_id);
+    if (pVideoCodec == NULL) {
+        DestroyFFMPEG();
+        return 4;
+    }
+    /* Allocate a codec context for the decoder */
+    pVideoCodecCtx = avcodec_alloc_context3(pVideoCodec);
+    if (pVideoCodecCtx == NULL) {
+        DestroyFFMPEG();
+        return 5;
+    }
+    /* Copy codec parameters from input stream to output codec context */
+    if (avcodec_parameters_to_context(pVideoCodecCtx, st->codecpar) < 0) {
+        DestroyFFMPEG();
+        return 6;
+    }
+    /* Init the decoders */
+
+    if (avcodec_open2(pVideoCodecCtx, pVideoCodec, NULL) < 0) {
+        DestroyFFMPEG();
+        return 7;
+    }
+
+    video_stream = pFormatCtx->streams[videoStreamIndex];
+
+    FFZone = 77777;
+    AVDictionaryEntry *rotate_tag = av_dict_get(video_stream->metadata, "rotate", NULL, 0);
+    if (rotate_tag != NULL) {
+        videoSwapUpDown = ((FFZone = atoi(rotate_tag->value)) == 180);
+    }
+
+    /* dump input information to stderr */
+    av_dump_format(pFormatCtx, 0, FileName, 0);
+    /* allocate frame */
+    videoFrame = av_frame_alloc();
+    if (!videoFrame) {
+        DestroyFFMPEG();
+        return 8;
+    }
+
+    /* allocate packet */
+    pkt = av_packet_alloc();
+    if (!pkt) {
+        DestroyFFMPEG();
+        return 9;
+    }
+
+    // get frames per second
+    VideoFps = (float)av_q2d(video_stream->r_frame_rate);
+    // init parser
+    pVideoCodecParser = av_parser_init(pVideoCodec->id);
+    if(pVideoCodecParser == NULL) {
+        DestroyFFMPEG();
+        return 10;  // failed parser init
+    }
+    /* allocate image where the decoded image will be put */
+    videoWidth = pVideoCodecCtx->width;
+    videoHeight = pVideoCodecCtx->height;
+    pix_fmt = pVideoCodecCtx->pix_fmt;
+
+    if ((retfunc = av_image_alloc(video_dst_data, video_dst_linesize,
+                       videoWidth, videoHeight, AV_PIX_FMT_RGB565BE, 1)) < 0) {
+        DestroyFFMPEG();
+        return 11; //"Could not allocate raw video buffer\n"
+    }
+    video_dst_bufsize = retfunc;
+    if (CreateSurf(&Sframe16, videoWidth, videoHeight, 16)==0) {
+        DestroyFFMPEG();
+        return 12; // no mem
+    }
+
+    VidOpen=true; // opened video
+
+    // allocate buffer required for u,v interpolation
+    uFinal = (unsigned char*) malloc(videoWidth);
+    vFinal = (unsigned char*) malloc(videoWidth);
+    if (uFinal == NULL || vFinal == NULL) {
+        CloseVidFFMPEG();
+        return 13;  // no mem
+    }
+    // try to read first videoStream packet
+    bool foundVideoStream = false;
+    while ((retfunc = av_read_frame(pFormatCtx, pkt)) >= 0) {
+        // check if the packet belongs to a stream we are interested in, otherwise
+        // skip it
+        if (pkt->stream_index == videoStreamIndex) {
+            // submit the packet to the decoder
+            if (avcodec_send_packet(pVideoCodecCtx, pkt) >= 0) {
+                foundVideoStream = true;
+                break;
+            } else {
+                av_packet_unref(pkt);
+                CloseVidFFMPEG();
+                return 14;  // failed to read first packet or empty file!
+            }
+        } else {
+            av_packet_unref(pkt);
+        }
+    }
+
+    if (!foundVideoStream) {
+        CloseVidFFMPEG();
+        return 15;  // failed to find video stream
+    }
+
+    // create Surf that will contain final frame
+    if(GetNextFrameFFMPEG(Sframe16,0)!=1) {
+        CloseVidFFMPEG();
+        return 16;  // no frame
+    }
+    // Need for convert time to ffmpeg time.
+    videoFramesCount = (int)(VideoFps*VideoTime);
+
+    framenum=0; // found one frame
+    countBufferReads=0;
+    PosSynch=0;
+    InitSynch(SynchBuff,&PosSynch,VideoFps);
+    VidOpen=true; // opened video
+    VidPause=0;
+    VidEnded=false;
+    frameskipped=0;
+    FrameAvlbl=0;
+    CurVidFile=FileName; // save current file
+    TNM[6].Activ = 1; // enable menu close
+    return 0;
+}
+
+// return 1 if new frame found, 0 else
+int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop) {
+    unsigned int nDrops     = nFramesToDrop;
+    int ret_av = 0;
+    DgSurf *Surf8bpp = NULL;
+    bool frameFound = false;
+    if (!VidOpen || videoStreamIndex < 0 ) return 0;
+
+    // available frame ?
+    while (!frameFound) {
+        while (nDrops > 0) {
+            if ((ret_av = avcodec_receive_frame(pVideoCodecCtx, videoFrame))>=0) {
+                av_frame_unref(videoFrame);
+                nDrops--;
+            } else {
+                break;
+            }
+        }
+        if (ret_av >=0 && avcodec_receive_frame(pVideoCodecCtx, videoFrame)>=0) {
+            frameFound = true;
+            continue;
+        }
+        while ((ret_av = av_read_frame(pFormatCtx, pkt)) >= 0) {
+            // check if the packet belongs to a stream we are interested in, otherwise
+            // skip it
+            if (pkt->stream_index == videoStreamIndex) {
+                // submit the packet to the decoder
+                if (avcodec_send_packet(pVideoCodecCtx, pkt) < 0) {
+                    av_packet_unref(pkt);
+                    VidEnded=true; // we reached the end
+                    return 0; // no frame
+                } else {
+                    // new packet found try if it contains frames
+                    av_packet_unref(pkt);
+                    break;
+                }
+            } else {
+                av_packet_unref(pkt);
+            }
+        }
+        // last read failure ?
+        if (ret_av < 0) {
+            VidEnded = true;
+            return 0;
+        }
+    }
+
+    if (frameFound) {
+        SYUVData  yuvData;
+        // preliminary setting if format is yuv
+        yuvData.y= (unsigned char*)videoFrame->data[0];
+        yuvData.u= (unsigned char*)videoFrame->data[1];
+        yuvData.v= (unsigned char*)videoFrame->data[2];
+
+        yuvData.y_scan= yuvData.width= videoWidth;
+        yuvData.u_scan= yuvData.v_scan= videoWidth/2;
+        yuvData.height= videoHeight;
+
+        // convert image to RGB16(565)
+        switch (pVideoCodecCtx->pix_fmt) {
+            case AV_PIX_FMT_YUV420P:
+            case AV_PIX_FMT_YUVJ420P:
+                YUV2RGB_F420(S16, &yuvData);
+                break;
+            case AV_PIX_FMT_YUV422P:
+            case AV_PIX_FMT_YUVJ422P:
+                YUV2RGB_F422(S16, &yuvData);
+                break;
+            case AV_PIX_FMT_YUV444P:
+            case AV_PIX_FMT_YUVJ444P:
+                yuvData.u_scan= videoWidth;
+                yuvData.v_scan= videoWidth;
+                YUV2RGB_F444(S16, &yuvData);
+                break;
+            case AV_PIX_FMT_PAL8:
+                // not working
+                if (CreateSurfBuff(&Surf8bpp, videoWidth, videoHeight, 8, videoFrame->data[0])) {
+                    ConvSurf8ToSurf16Pal(S16,Surf8bpp,videoFrame->data[1]);
+                    DestroySurf(Surf8bpp);
+                };
+                break;
+            case AV_PIX_FMT_RGB24:
+                for (int i=0; i < S16->SizeSurf /2 ; i++) {
+                    ((unsigned short*)S16->rlfb)[i] = RGB16(videoFrame->data[0][i*3+0], videoFrame->data[0][i*3+1], videoFrame->data[0][i*3+2]);
+                }
+                break;
+            case AV_PIX_FMT_BGR24:
+                for (int i=0; i < S16->SizeSurf /2 ; i++) {
+                    ((unsigned short*)S16->rlfb)[i] = RGB16(videoFrame->data[0][i*3+2], videoFrame->data[0][i*3+1], videoFrame->data[0][i*3+0]);
+                }
+                break;
+            case AV_PIX_FMT_RGBA:
+                for (int i=0; i < S16->SizeSurf /2 ; i++) {
+                    ((unsigned short*)S16->rlfb)[i] = RGB16(videoFrame->data[0][i*4+0], videoFrame->data[0][i*4+1], videoFrame->data[0][i*4+2]);
+                }
+                break;
+            case AV_PIX_FMT_BGRA:
+                for (int i=0; i < S16->SizeSurf /2 ; i++) {
+                    ((unsigned short*)S16->rlfb)[i] = RGB16(videoFrame->data[0][i*4+2], videoFrame->data[0][i*4+1], videoFrame->data[0][i*4+0]);
+                }
+                break;
+            default:
+                DgSurf saveSurf;
+                DgGetCurSurf(&saveSurf);
+                DgSetCurSurf(S16);
+                Clear16(RGB16(0,0,0));
+                char interstr[64];
+                ClearText();
+                SetTextCol(RGB16(255,255,255));
+                OutText16Mode("oops ! unsupported ffmpeg pixel_format!\n", AJ_MID);
+                OutText16ModeFormat(AJ_MID, interstr, 63, "ID %i\n", (int)pVideoCodecCtx->pix_fmt);
+                DgSetCurSurf(&saveSurf);
+                break;
+        }
+        // free videoFrame
+        av_frame_unref(videoFrame);
+        return 1;
+    }
+    VidEnded=true; // we reached the end
+    return 0;
+}
+
+// destroy/free as much as possible ffmpeg allocated mem/ressources
+void DestroyFFMPEG() {
+
+    if (pVideoCodecCtx) {
+        avcodec_send_packet(pVideoCodecCtx, NULL);
+        avcodec_free_context(&pVideoCodecCtx);
+        pVideoCodecCtx = NULL;
+    }
+
+    if (pFormatCtx) {
+        avformat_close_input(&pFormatCtx);
+        pFormatCtx = NULL;
+    }
+
+    if (pVideoCodecParser) {
+        av_parser_close(pVideoCodecParser);
+        pVideoCodecParser = NULL;
+    }
+    if (videoFrame) {
+        av_frame_free(&videoFrame);
+        videoFrame = NULL;
+    }
+    if (pkt) {
+        av_packet_free(&pkt);
+        pkt = NULL;
+    }
+
+    if(uFinal) { free(uFinal); uFinal = NULL; }
+    if(vFinal) { free(vFinal); vFinal = NULL; }
+    if (Sframe16!=NULL) {
+        DestroySurf(Sframe16);
+        Sframe16 = NULL;
+    }
+    videoStreamIndex = -1;
+    videoFramesCount = 0;
+}
+
+// close an opened video
+void CloseVidFFMPEG() {
+    if (!VidOpen)
+        return;
+    DestroyFFMPEG();
+    VidOpen = false;
+}
+
 
 ///////////////////////////////////////
 // general YUV 2 RGB conversion routine
@@ -1783,8 +2150,6 @@ void YUV2RGB_F420(DgSurf *S, SYUVData *pYUVDATA) {
            scanlinePtr+=S->ScanLine;
        }
     }
-    FREE_MMX();
-
 }
 
 void YUV2RGB_F422(DgSurf *S, SYUVData *pYUVDATA) {
@@ -1821,7 +2186,6 @@ void YUV2RGB_F422(DgSurf *S, SYUVData *pYUVDATA) {
            scanlinePtr+=S->ScanLine;
        }
     }
-    FREE_MMX();
 }
 
 
@@ -1840,7 +2204,6 @@ void YUV2RGB_F444(DgSurf *S, SYUVData *pYUVDATA) {
         scanlinePtr+=S->ScanLine;
         strides+=pYUVDATA->y_scan;
     }
-    FREE_MMX();
 }
 
 

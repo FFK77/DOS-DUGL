@@ -16,6 +16,12 @@
 	RET
 %endmacro
 
+%macro MMX_RETURN	0
+	POP		EBP
+	EMMS
+	RET
+%endmacro
+
 %macro	FARG 	2-*
 	%assign i	4
 
@@ -30,3 +36,9 @@
 %macro FRETURN  0
 	RET
 %endmacro
+
+%macro MMX_FRETURN  0
+	EMMS
+	RET
+%endmacro
+

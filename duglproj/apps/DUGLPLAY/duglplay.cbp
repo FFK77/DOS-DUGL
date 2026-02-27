@@ -28,14 +28,14 @@
 				<Option compiler="djgpp_gnu_gcc_compiler" />
 				<Compiler>
 					<Add option="-O2" />
-					<Add option="-std=gnu++11" />
+					<Add option="-Weffc++" />
+					<Add option="-Wextra" />
 					<Add option="-m32" />
 					<Add directory="../../../dugl" />
 					<Add directory="../../../duglplus" />
 				</Compiler>
 				<Linker>
 					<Add option="-s" />
-					<Add option="-static-libstdc++" />
 					<Add option="-m32" />
 					<Add directory="../../../dugl/bin/Release" />
 					<Add directory="../../../duglplus/bin/Release" />
@@ -47,14 +47,30 @@
 		</Compiler>
 		<Linker>
 			<Add library="dugl" />
-			<Add library="gthreads" />
 			<Add library="duglplus" />
-			<Add library="z" />
 			<Add library="bmpeg" />
-			<Add library="theora" />
 			<Add library="theoradec" />
+			<Add library="avformat" />
+			<Add library="avcodec" />
+			<Add library="avdevice" />
+			<Add library="avfilter" />
+			<Add library="postproc" />
+			<Add library="swresample" />
+			<Add library="swscale" />
+			<Add library="avutil" />
 			<Add library="vorbis" />
+			<Add library="vbsenc" />
 			<Add library="ogg" />
+			<Add library="theora" />
+			<Add library="mp3lame" />
+			<Add library="x264" />
+			<Add library="gthreads" />
+			<Add library="opus" />
+			<Add library="xml2" />
+			<Add library="lzma" />
+			<Add library="bz2" />
+			<Add library="lz" />
+			<Add library="z" />
 		</Linker>
 		<Unit filename="PARAM.MAC" />
 		<Unit filename="duglplay.cc" />

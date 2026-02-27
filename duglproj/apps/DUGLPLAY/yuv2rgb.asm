@@ -39,7 +39,7 @@ ALIGN 4
             PMULLW      mm6,[EAX+AQWF1_5958]
             PSRAW       mm0,Prec ; mm0 = W (Y0-0.0625)*1.1643 | W (Y1-0.0625)*1.1643 | ...
             PUNPCKLBW   mm4,mm7 ; mm4 = W U0 | W U1 | W U2 | W U3
-            
+
             PMULLW      mm5,[EAX+AQWF0_8129]
             PSUBW       mm4,[EAX+AQHalfMaxUV] ; mm4 = W U0-128 | W U1-128 | W U2-128 | W U3-128
             PSRAW       mm6,Prec ; mm0 = W (V0)*1.5958 | W (V1)*1.5958 | ...
@@ -54,7 +54,7 @@ ALIGN 4
             PADDW		mm3,mm0
             MOVQ        mm1,mm0
             PADDW       mm3,mm2  ; mm3 = blue 0 | blue 1 | blue 2 | blue 3
-            
+
             PSUBW       mm1,mm4
             PADDW       mm0,mm6  ; mm0 = red 0 | red 1 | red 2 | red 3
 			PSUBW		mm1,mm5  ; mm1 = green 0 | green 1 | green 2 | green 3
@@ -82,11 +82,11 @@ ALIGN 4
             LEA         EBX,[EBX+4]
             LEA         EDI,[EDI+8]
             JNZ         .BcYUV2RGB
-            
+
 		    POP         EDI
 		    POP		    ESI
 		    POP         EBX
-		    RETURN
+		    MMX_RETURN
 
 ALIGN 32
 _Scan422YUV2RGB16:
@@ -119,7 +119,7 @@ ALIGN 4
             PUNPCKLBW   mm4,mm4 ; mm4 = B U0 | B U0 | B U1 | B U1 || ....
             PSRAW       mm0,Prec ; mm0 = W (Y0-0.0625)*1.1643 | W (Y1-0.0625)*1.1643 | ...
             PUNPCKLBW   mm4,mm7 ; mm4 = W U0 | W U1 | W U2 | W U3
-            
+
             PMULLW      mm5,[EAX+AQWF0_8129]
             PSUBW       mm4,[EAX+AQHalfMaxUV] ; mm4 = W U0-128 | W U1-128 | W U2-128 | W U3-128
             PSRAW       mm6,Prec ; mm0 = W (V0)*1.5958 | W (V1)*1.5958 | ...
@@ -134,7 +134,7 @@ ALIGN 4
             PADDW		mm3,mm0
             MOVQ        mm1,mm0
             PADDW       mm3,mm2  ; mm3 = blue 0 | blue 1 | blue 2 | blue 3
-            
+
             PSUBW       mm1,mm4
             PADDW       mm0,mm6  ; mm0 = red 0 | red 1 | red 2 | red 3
 			PSUBW		mm1,mm5  ; mm1 = green 0 | green 1 | green 2 | green 3
@@ -162,11 +162,11 @@ ALIGN 4
             LEA         EBX,[EBX+2]
             LEA         EDI,[EDI+8]
             JNZ         .BcYUV2RGB
-            
+
 		    POP         EDI
 		    POP		    ESI
 		    POP         EBX
-		    RETURN
+		    MMX_RETURN
 
 ALIGN 32
 SECTION	.data
