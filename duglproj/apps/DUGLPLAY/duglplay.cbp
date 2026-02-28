@@ -48,7 +48,6 @@
 		<Linker>
 			<Add library="dugl" />
 			<Add library="duglplus" />
-			<Add library="bmpeg" />
 			<Add library="theoradec" />
 			<Add library="avformat" />
 			<Add library="avcodec" />
