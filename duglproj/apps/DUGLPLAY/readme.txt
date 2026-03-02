@@ -1,4 +1,4 @@
-DUGL Player 1.0 Alpha 1 - released 2026-02-28
+DUGL Player 1.0 Alpha 2 - released 2026-03-02
 =============================================
 
 About
@@ -12,14 +12,11 @@ License
 DUGL Player is (C) by FFK. This a freeware, use it at your own risk.
 Source code of player itself is available (C/C++/Assembly language)
 and source code/binaries of DUGL+ and binaries of DUGL Core can be
-downloaded separately from DUGL website.
-The player uses external libraries LibOGG, LibVorbis and LibTheora
-by Xiph Foundation, source code is available under the BSD-like Xiph
-license and an updated version of Berkley MPEG1/2 decoder library.
-The player is redistribuable, the relevant files
-(main executable, support files, this file, source)
-should be kept together, but there is no need to include the libraries
-or example videos.
+downloaded separately from DUGL website (https://github.com/FFK77/DOS-DUGL)
+The player uses mainly FFMPEG library as wrapper to several external libraries 
+like LibOGG, LibVorbis and LibTheora by Xiph Foundation, source code is available 
+under the BSD-like Xiph license, libx264, libmp3lame, libxml2 .. 
+each library under it's own licence
 
 You can use/reuse/modify source code if "DUGL Player" or part of it 
 at the following conditions :
@@ -45,14 +42,14 @@ Features
 Supported media fileformats
 ---------------------------
 
-Any format supported by current FFMPEG 5.1.2 which is mostly every thing including animated GIF, WEBM, MPEG4 ...
+Any format supported by current FFMPEG 5.1.2 which is mostly every thing including:
+ animated GIF, WEBM, MPEG4, MOV ...
 
 
 Missing Features/TODO
 ---------------------
 
 - Keep Aspect Ratio
-- Video seeking
 - Playing Video sound
 - playing video at full res : currently high-res videos are downsampled to 640x480
 - Detect/handle video orientation
@@ -108,3 +105,17 @@ the performance:
   but playing will be slow.
 
 
+History:
+--------
+
+28 february 2026: 1.0 alpha 1
+
+2 march 2026 : 1.0 alpha 2
+
+- Add experimental seeking using the horizontal slider. (video is paused once user start seeking)
+- Save/restore working directory at player startup/close to avoid changing
+  current user directory.
+- several fixes and cleanup
+
+
+ 
