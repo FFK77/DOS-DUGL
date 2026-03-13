@@ -7,13 +7,13 @@ typedef struct {
 	    LeftVol,RightVol,
 	    Priority;
 	int Resv[6];
-} VoicePack;
+} DVoicePack;
 
 typedef struct {
 	void *Ptr;
 	int  Size,Freq,Type,SizeSecond;
 	int  resv[19];
-} Voice;
+} DVoice;
 
 // Voice Type
 #define DS_8BITS_MONO     0
@@ -24,11 +24,12 @@ typedef struct {
 // VOICE Effect
 #define DS_EFF_NONE	        0
 #define DS_EFF_CHG_SPEED	1
-#define DS_EFF_CHG_VOL	        2
+#define DS_EFF_CHG_VOL	    2
 // VOICE State
 #define DS_VC_NORMAL	0
 #define DS_VC_LOOPING	1
 #define DS_VC_STOPPED	2
+#define DS_VC_QUEUED	4
 
 // SoundDRV->InitSound(...) parameters
 #define DS_NOSOUND 	0  // Type8Bit & Type16Bit
@@ -71,7 +72,7 @@ unsigned int Signature,		//   ==	"FSDR"
 	int  InitDriverPtr;
 	int  (*InstallDriver)(void *Buff,int Base,int IRQ,int DMA8,int DMA16);
 	void (*UninstallDriver)();
-	int  (*InitSound)(int Type8Bits,int Type16Bits,int SndType,int SampleSpeed);
+	int  (*InitSound)(int Type8Bits,int Type16Bits,bool bStereo,int SampleSpeed);
 	void (*ResetSound)();
 	void (*StopSound)();
 	void (*ContinueSound)();
@@ -90,21 +91,25 @@ unsigned int Signature,		//   ==	"FSDR"
 	void (*SetInput)(int SelectInputLeft,int SelectInputRight);
 	int  ResvGlob[44];
 	// Mixer functions
-	int  (*AddVoice)(Voice *Vc,int VcEffect,int VcState,VoicePack *VcP,
+	int  (*AddVoice)(DVoice *Vc,int VcEffect,int VcState,DVoicePack *VcP,
 	                 unsigned int Pos);
-	int  (*PrepareVoice)(Voice *Vc);
-	int  (*UnprepareVoice)(Voice *Vc);
-	int  (*GetVoiceState)(Voice *Vc,int *VcState);
-	int  (*SetVoiceState)(Voice *Vc,int VcState);
-	int  (*GetVoiceEffPack)(Voice *Vc,int *VcEffect,VoicePack *VcP);
-	int  (*SetVoiceEffPack)(Voice *Vc,int VcEffect,VoicePack *VcP);
-	int  (*GetVoicePos)(Voice *Vc,int *VcVrPos);
-	int  (*SetVoicePos)(Voice *Vc,int VcVrPos);
-	int  (*DeleteVoice)(Voice *Vc);
-	void (*DeleteAllVoice)();
-	int  (*GetNbVoice)();
+	int  (*PrepareVoice)(DVoice *Vc);
+	int  (*UnprepareVoice)(DVoice *Vc);
+	int  (*GetVoiceState)(DVoice *Vc,int *VcState);
+	int  (*SetVoiceState)(DVoice *Vc,int VcState);
+	int  (*GetVoiceEffPack)(DVoice *Vc,int *VcEffect,DVoicePack *VcP);
+	int  (*SetVoiceEffPack)(DVoice *Vc,int VcEffect,DVoicePack *VcP);
+	int  (*GetVoicePos)(DVoice *Vc,int *VcVrPos);
+	int  (*SetVoicePos)(DVoice *Vc,int VcVrPos);
+	int  (*DeleteVoice)(DVoice *Vc);
+	void (*DeleteAllVoices)();
+	int  (*GetCountVoices)();
+	int  (*QueueVoice)(DVoice *toVoice, DVoice *Vc,int VcEffect,int VcState,DVoicePack *VcP,
+	                 unsigned int Pos);
+	int  (*ReplaceVoice)(DVoice *toVoice, DVoice *Vc,int VcEffect,int VcState,DVoicePack *VcP,
+	                 unsigned int Pos);
 
-	int  VoiceMixer[116];
+	int  VoiceMixer[114];
 } SoundDRV;
 
 #ifdef __cplusplus
@@ -115,12 +120,12 @@ int  LoadSoundDRV(SoundDRV **SndDrv,char *Fname);
 int  LoadMemSoundDRV(SoundDRV **SndDrv,void *In,int SizeIn);
 void DestroySoundDRV(SoundDRV *SndDrv);
 
-int  LoadWAV(Voice *Vc,char *Fname);
-int  LoadMemWAV(Voice *Vc,void *In,int SizeIn);
-int  SaveWAV(Voice *Vc,char *Fname);
-int  SaveMemWAV(Voice *Vc,void *Out);
-int  SizeSaveWAV(Voice *Vc);
-void DestroyVoice(Voice *Vc);
+int  LoadWAV(DVoice *Vc,char *Fname);
+int  LoadMemWAV(DVoice *Vc,void *In,int SizeIn);
+int  SaveWAV(DVoice *Vc,char *Fname);
+int  SaveMemWAV(DVoice *Vc,void *Out);
+int  SizeSaveWAV(DVoice *Vc);
+void DestroyVoice(DVoice *Vc);
 
 #ifdef __cplusplus
            }

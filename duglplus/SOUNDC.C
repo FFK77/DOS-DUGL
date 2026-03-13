@@ -20,7 +20,9 @@ int  LoadSoundDRV(SoundDRV **SndDrv,char *Fname)
 	int Size;
 	char *Buff;
 	void (*InitDriver)();
-	if ((InSoundDRV=fopen(Fname,"rb"))==NULL) return 0;
+	if ((InSoundDRV=fopen(Fname,"rb"))==NULL) {
+		return 0;
+	}
 	if (fread(&SD,sizeof(SoundDRV),1,InSoundDRV)<1) return 0;
 	fseek(InSoundDRV,0,SEEK_END);
 	Size=ftell(InSoundDRV);
@@ -64,7 +66,6 @@ int  LoadMemSoundDRV(SoundDRV **SndDrv,void *In,int SizeIn)
 	else
 	   *SndDrv=(SoundDRV*)Buff;
 	memcpy(Buff,In,SD.SizeDrv);
-	//D:\mywrk\GITHUB\DJGPP-DUGL\duglplus\SOUNDC.C|47|error: invalid conversion from 'unsigned int' to 'void (*)()' [-fpermissive]|
 	InitDriver=(void (*)())(SD.InitDriverPtr+(unsigned int)(*SndDrv));
 	(*SndDrv)->DrvBuffPtr=Buff;
 	InitDriver();
@@ -78,11 +79,11 @@ void DestroySoundDRV(SoundDRV *SndDrv)
 }
 
 
-int  LoadWAV(Voice *Vc,char *Fname)
+int  LoadWAV(DVoice *Vc,char *Fname)
 {	FILE *InWAV;
 	HeadWAV hwav;
 	void *Buff;
-        memset(Vc, 0, sizeof(Voice));
+	memset(Vc, 0, sizeof(DVoice));
 	if ((InWAV=fopen(Fname,"rb"))==NULL) return 0;
 	fread(&hwav,sizeof(HeadWAV),1,InWAV);
 	if (hwav.Sign!='FFIR' || hwav.SignDATA!='atad' ||
@@ -110,7 +111,7 @@ int  LoadWAV(Voice *Vc,char *Fname)
 	return 1;
 }
 
-int  LoadMemWAV(Voice *Vc,void *In,int SizeIn)
+int  LoadMemWAV(DVoice *Vc,void *In,int SizeIn)
 {	HeadWAV hwav;
 	void *Buff;
 	Vc->Ptr=0;
@@ -138,7 +139,7 @@ int  LoadMemWAV(Voice *Vc,void *In,int SizeIn)
 	return 1;
 }
 
-void DestroyVoice(Voice *Vc)
-{	if (Vc->Ptr!=NULL) { free(Vc->Ptr); Vc->Ptr=NULL; }
+void DestroyVoice(DVoice *Vc) {
+	if (Vc->Ptr!=NULL) { free(Vc->Ptr); Vc->Ptr=NULL; }
 }
 
