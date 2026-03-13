@@ -1,71 +1,96 @@
 SECTION .text
 [BITS 32]
-; ENTETE DU DRIVER ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+; DRIVER HEADER ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Signature		DD	"FSDR"		; FLAT SOUND DRIVER
-SizeDrv			DD	FinDrv
+Signature			DD	"FSDR"		; FLAT SOUND DRIVER
+SizeDrv				DD	FinDrv
 Capabilities		DD	Out8|Out16|OutMono|OutStereo|In8|In16|InMono|InStereo|FullDuplex|AutoDetect
 Capabilities2		DD	0
-SizeBuff		DD	SizeDMABuff*8
-Min8BitMono		DD	5000
-Max8BitMono		DD	45454
+SizeBuff			DD	SizeDMABuff*8
+Min8BitMono			DD	5000
+Max8BitMono			DD	45454
 Min16BitMono		DD	5000
 Max16BitMono		DD	45454
 Min8BitStereo		DD	5000
 Max8BitStereo		DD	45454
 Min16BitStereo		DD	5000
 Max16BitStereo		DD	45454
-SB_BasePort		DD	0
-SB_IRQ			DD	0
-SB_DMA8			DD	0
-SB_DMA16		DD	0
+SB_BasePort			DD	0
+SB_IRQ				DD	0
+SB_DMA8				DD	0
+SB_DMA16			DD	0
 SB_SampSpeed		DD	0
-Error			DD	0
-Version			DD	'0500' ; version 0.5
-resv:			DD	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-			DD	0,0,0,0,0,0,0,0
-DrvBuffPtr		DD	0
-PtrCardName		DD	CardName
-GlobFonc:		DD	InitDriver,InstallDriver,UninstallDriver
-			DD	InitSound,ResetSound,StopSound,ContinueSound
-			DD	SetMasterVolume,SetVoiceVolume,SetMidiVolume
-			DD	SetCDVolume,SetLineVolume,SetMicVolume
-			DD	SetInGain,SetOutGain,SetAutoGain,SetTreble
-			DD	SetBass,SetOutput,SetInput
-			DD	NS,NS,NS,NS
-			DD	NS,NS,NS,NS,NS,NS,NS,NS
-			DD	NS,NS,NS,NS,NS,NS,NS,NS
-			DD	NS,NS,NS,NS,NS,NS,NS,NS
-			DD	NS,NS,NS,NS,NS,NS,NS,NS
-			DD	NS,NS,NS,NS,NS,NS,NS,NS
-VoiceMixer:		DD	AddVoice,PrepVoice,UnprepVoice,GetVoiceState
-			DD	SetVoiceState,GetVoiceEffPack,SetVoiceEffPack
-			DD	GetVoicePos,SetVoicePos,DeleteVoice
-			DD	DeleteAllVoice,GetNbVoice
-			DD	NS,NS,NS,NS
-			DD	NS,NS,NS,NS,NS,NS,NS,NS
-			DD	NS,NS,NS,NS,NS,NS,NS,NS
-			DD	NS,NS,NS,NS,NS,NS,NS,NS
-			DD	NS,NS,NS,NS,NS,NS,NS,NS
-			DD	NS,NS,NS,NS,NS,NS,NS,NS
-			DD	NS,NS,NS,NS,NS,NS,NS,NS
-			DD	NS,NS,NS,NS,NS,NS,NS,NS
-			DD	NS,NS,NS,NS,NS,NS,NS,NS
-			DD	NS,NS,NS,NS,NS,NS,NS,NS
-			DD	NS,NS,NS,NS,NS,NS,NS,NS
-			DD	NS,NS,NS,NS,NS,NS,NS,NS
-			DD	NS,NS,NS,NS,NS,NS,NS,NS
-			DD	NS,NS,NS,NS,NS,NS,NS,NS
-			DD	NS,NS,NS,NS,NS,NS,NS,NS
+Error				DD	0
+Version				DD	'0600' ; version 0.5
+resv:				DD	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+					DD	0,0,0,0,0,0,0,0
+DrvBuffPtr			DD	0
+PtrCardName			DD	CardName
+GlobFonc:
+					DD	InitDriver,InstallDriver,UninstallDriver
+					DD	InitSound,ResetSound,StopSound,ContinueSound
+					DD	SetMasterVolume,SetVoiceVolume,SetMidiVolume
+					DD	SetCDVolume,SetLineVolume,SetMicVolume
+					DD	SetInGain,SetOutGain,SetAutoGain,SetTreble
+					DD	SetBass,SetOutput,SetInput
+					DD	NS,NS,NS,NS
+					DD	NS,NS,NS,NS,NS,NS,NS,NS
+					DD	NS,NS,NS,NS,NS,NS,NS,NS
+					DD	NS,NS,NS,NS,NS,NS,NS,NS
+					DD	NS,NS,NS,NS,NS,NS,NS,NS
+					DD	NS,NS,NS,NS,NS,NS,NS,NS
+VoiceMixer:
+					DD	AddVoice,PrepVoice,UnprepVoice,GetVoiceState
+					DD	SetVoiceState,GetVoiceEffPack,SetVoiceEffPack
+					DD	GetVoicePos,SetVoicePos,DeleteVoice
+					DD	DeleteAllVoices,GetCountVoices
+					DD	QueueVoice,ReplaceVoice
+					DD	NS,NS,NS,NS,NS,NS,NS,NS,NS
+					DD	NS,NS,NS,NS,NS,NS,NS,NS,NS
+					DD	NS,NS,NS,NS,NS,NS,NS,NS
+					DD	NS,NS,NS,NS,NS,NS,NS,NS
+					DD	NS,NS,NS,NS,NS,NS,NS,NS
+					DD	NS,NS,NS,NS,NS,NS,NS,NS
+					DD	NS,NS,NS,NS,NS,NS,NS,NS
+					DD	NS,NS,NS,NS,NS,NS,NS,NS
+					DD	NS,NS,NS,NS,NS,NS,NS,NS
+					DD	NS,NS,NS,NS,NS,NS,NS,NS
+					DD	NS,NS,NS,NS,NS,NS,NS,NS
+					DD	NS,NS,NS,NS,NS,NS,NS,NS
+					DD	NS,NS,NS,NS,NS,NS,NS,NS
+					DD	NS,NS,NS,NS,NS,NS,NS,NS
 
 ; CODE ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 %include "param.mac"
+; CONST ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+MAX_VOICES		EQU 32
+; ----- Capabilities ----------------
+Out8			EQU	1
+Out16			EQU	2
+OutMono			EQU	4
+OutStereo		EQU	8
+In8				EQU	16
+In16			EQU	32
+InMono			EQU	64
+InStereo		EQU	128
+FullDuplex		EQU	256
+AutoDetect		EQU	512
+; -----------------------------------
+SizeDMABuff		EQU	512   ; pow 2
+VolMask			EQU	0x1ff    ; 64 or 0x40 Vol Norm
+SpeedMask		EQU	0x7ff	 ; 128 or 0x80 Vitesse Norm
+; ----- Effect ----------------------
+ChgSpeed		EQU	1
+ChgVol			EQU	2
+;VcReverse		EQU	4
+; ----- Voice State -----------------
+VcInBoucle		EQU	1
+VcStopped		EQU	2
+VcQueued		EQU 4
+
 DebSndLockCode:;*************************************************************
-%include "sb.asm"
-%include "dma.asm"
-%include "vc_mix.asm"
-%include "mixer.asm"
 
 GetBaseAddress:
 		MOV		EBX,0
@@ -75,6 +100,11 @@ NS:		; fonction ((N)on (S)upporte) retourne 1 dans EAX
 		MOV		EAX,1
 		RET
 
+%include "sb.asm"
+%include "dma.asm"
+%include "vc_mix.asm"
+%include "mixer.asm"
+
 ALIGN 32
 SB_Handler:
 		PUSHF
@@ -83,55 +113,56 @@ SB_Handler:
 		PUSH		ES
 
 		CALL		GetBaseAddress
-		MOV		DS,[CS:EBX+SndMyDSSelector]
-		MOV		ES,[EBX+SndMyDSSelector]
+		MOV			DS,[CS:EBX+SndMyDSSelector]
+		MOV			ES,[EBX+SndMyDSSelector]
 
 		@Read_Mixer 0x82
 		TEST		AL,1
-		JZ		.PasTrait8Bit
+		JZ			.PasTrait8Bit
 ;***************Procede la E/S 8 Bits**********************
 
 		CALL		GetBaseAddress
-		MOV		EAX,[EBX+AddrProced8Bit]
+		MOV			EAX,[EBX+AddrProced8Bit]
 		CALL		EAX
 
 ;***************FIN Precede E/S 8 Bits*********************
 		CALL		GetBaseAddress
-		MOV		EAX,[EBX+OffResCalcDMA8]
-		ADD		EAX,SizeDMABuff/2
-		AND		EAX,SizeDMABuff-1
-		MOV		[EBX+OffResCalcDMA8],EAX
-		MOV		EDX,[EBX+DSPStateAck8]
-		IN		AL,DX               ; acquite 8 Bits
+		MOV			EAX,[EBX+OffResCalcDMA8]
+		ADD			EAX,SizeDMABuff/2
+		AND			EAX,SizeDMABuff-1
+		MOV			[EBX+OffResCalcDMA8],EAX
+		MOV			EDX,[EBX+DSPStateAck8]
+		IN			AL,DX               ; acquite 8 Bits
 .PasTrait8Bit:
 
 		@Read_Mixer 0x82
 		TEST		AL,2
-		JZ		.PasTrait16Bit
+		JZ			.PasTrait16Bit
 ;***************Procede la E/S 16 Bits**********************
 
 		CALL		GetBaseAddress
-		MOV		EAX,[EBX+AddrProced16Bit]
+		MOV			EAX,[EBX+AddrProced16Bit]
 		CALL		EAX
 
 ;***************FIN Precede E/S 16 Bits*********************
 		CALL		GetBaseAddress
-		MOV		EAX,[EBX+OffResCalcDMA16]
-		ADD		EAX,SizeDMABuff
-		AND		EAX,(SizeDMABuff*2)-1
-		MOV		[EBX+OffResCalcDMA16],EAX
-		MOV		EDX,[EBX+DSPAck16]
-		IN		AL,DX               ; acquite 16 Bits
+		MOV			EAX,[EBX+OffResCalcDMA16]
+		ADD			EAX,SizeDMABuff
+		AND			EAX,(SizeDMABuff*2)-1
+		MOV			[EBX+OffResCalcDMA16],EAX
+		MOV			EDX,[EBX+DSPAck16]
+		IN			AL,DX               ; acquite 16 Bits
 .PasTrait16Bit:
-		MOV		AL,0x20
+		MOV			AL,0x20
 		CALL		GetBaseAddress
-                CMP             BYTE [SbIRQ+EBX],8
-                JB              .PasContrl2
-		OUT		0xA0,AL
-.PasContrl2:	OUT		0x20,AL
+		CMP         BYTE [SbIRQ+EBX],8
+		JB          .PasContrl2
+		OUT			0xA0,AL
+.PasContrl2:
+		OUT			0x20,AL
 
-		POP		ES
-		POP		DS
+		POP			ES
+		POP			DS
 		POPAD
 		POPF
 		STI
@@ -156,7 +187,7 @@ ResetSound:
 		XOR		EAX,EAX
 		MOV		[EBX+SB_SampSpeed],EAX
 		MOV		[EBX+SbSampSpeed],EAX
-		
+
 		; Efface Tous les voix en cours ou en attente---------------
 		MOV		ECX,32*2
 		LEA		EDI,[VoicePtr+EBX] ; PtrVoix+BaseAddress
@@ -178,7 +209,7 @@ StopSound:
 		POP		ESI
 		POP		EBX
 		RET
-		
+
 ContinueSound:
 		PUSH		EBX
 		PUSH		ESI
@@ -197,17 +228,13 @@ SetMasterVolume:
 		MOV		ECX,[EBP+LeftMasterVol]
 		CMP		ECX,-1
 		JE		.PasChangeLeft
-		AND		ECX,0xFF
-		SHR		ECX,3
-		SHL		ECX,3
+		AND		CL,0xF8 ; clear first 3 bits
 		@Write_Mixer 	0x30,CL
 .PasChangeLeft:
 		MOV		ECX,[EBP+RightMasterVol]
 		CMP		ECX,-1
 		JE		.PasChangeRight
-		AND		ECX,0xFF
-		SHR		ECX,3
-		SHL		ECX,3
+		AND		CL,0xF8 ; clear first 3 bits
 		@Write_Mixer 	0x31,CL
 .PasChangeRight:
 		POP		EBX
@@ -218,9 +245,7 @@ SetMasterVolume:
 		MOV		ECX,%1
 		CMP		ECX,-1
 		JE		%%PasChange
-		AND		ECX,0xFF
-		SHR		ECX,4
-		SHL		ECX,4
+		AND		CL,0xF0
 		@Write_Mixer 	%2,CL
 %%PasChange:
 %endmacro
@@ -268,9 +293,7 @@ SetMicVolume:
 		MOV		ECX,%1
 		CMP		ECX,-1
 		JE		%%PasChange
-		AND		ECX,0xFF
-		SHR		ECX,6
-		SHL		ECX,6
+		AND		CL,0xC0
 		@Write_Mixer 	%2,CL
 %%PasChange:
 %endmacro
@@ -336,7 +359,7 @@ SetInput:
 		@Write_Mixer	0x3E,CL
 		POP		EBX
 		RETURN
-		
+
 ;----------------------------------------------------------------------------
 ; Type..Bits      : 0, (no sound), 1 Out, 2 In
 ; GenType         : 0 MONO, 1 STEREO
@@ -398,7 +421,7 @@ InitSound:
 		MOV		DWORD [EBX+OutType],0
 		LEA		EAX,[EBX+ProcedOut8BitsM] ; AddrProced ------
 		MOV		[EBX+AddrProced8Bit],EAX
-		
+
 		JMP		.Size8Bits
 .StereoOut8Bit:
 		@Write_DSP 0x20  ; Unsigned STEREO
@@ -480,7 +503,8 @@ InitSound:
 		LEA		EAX,[EBX+ProcedIn16BitsS] ; AddrProced -------
 		MOV		[EBX+AddrProced16Bit],EAX
 
-.Size16Bits:	@Write_DSP (( (SizeDMABuff/2)-1)&0xff)
+.Size16Bits:
+		@Write_DSP (( (SizeDMABuff/2)-1)&0xff)
 		@Write_DSP ((( (SizeDMABuff/2)-1)>>8)&0xff)
 		MOV		DWORD [EBX+OffResCalcDMA16],0
 .No16BitsSound:
@@ -488,17 +512,20 @@ InitSound:
 		MOV		EAX,[EBP+SampleSpeed]
 		MOV		[EBX+SB_SampSpeed],EAX
 		MOV		[EBX+SbSampSpeed],EAX
-		
+
 		; Efface Tous les voix en cours ou en attente---------------
-		MOV		ECX,32*2
+		MOV		ECX,MAX_VOICES*2
 		LEA		EDI,[VoicePtr+EBX] ; PtrVoix+BaseAddress
 		XOR		EAX,EAX
 		REP		STOSD
 
 		JMP		SHORT .InitSndOk
-.InitSndError:	XOR		EAX,EAX
-		JMP		NEAR .PasInitSOk
-.InitSndOk:	OR		EAX,BYTE -1
+.InitSndError:
+		XOR		EAX,EAX
+		JMP		SHORT .PasInitSOk
+.InitSndOk:
+		CALL	StopSound
+		OR		EAX,BYTE -1
 .PasInitSOk:
 		POP		EBX
 		POP		EDI
@@ -644,15 +671,15 @@ InstallDriver:
 		JMP		.SoundError
 .DMA16Detect:	MOVZX		EAX,AH
 		CALL		GetBaseAddress
-		
+
 		MOV		[EBX+SB_DMA16],EAX
 		MOV		[EBX+SbDMA16],EAX
 		; Allocation Des Buffers DMA---------------------------------
-		
+
 		@AllocDOSMemDMA8 SizeDMABuff
 		OR		EAX,EAX
 		JZ		NEAR .SoundError
-		
+
 		@AllocDOSMemDMA16 SizeDMABuff*2
 		OR		EAX,EAX
 		JNZ		NEAR .MemDMA16Ok
@@ -730,7 +757,8 @@ InstallDriver:
 		JAE		.InstPIC2
 		ADD		BL,8
 		JMP		SHORT .InstPIC1
-.InstPIC2:	ADD		BL,0x70-8
+.InstPIC2:
+		ADD		BL,0x70-8
 .InstPIC1:
 		MOV		ECX,CS
 		INT		0x31
@@ -841,9 +869,9 @@ UninstallDriver:
 .InstPIC2:	ADD		EBX,0x70-8
 .InstPIC1:
 		INT		0x31
-		
+
 		STI
-		
+
 		; free DMA buffers ------------------------------------------
 		CALL		GetBaseAddress
 		MOV		AX,0x101
@@ -892,44 +920,44 @@ UninstallDriver:
 		POP		ESI
 		RET
 
-		
+
 SECTION .data
 ; DONNEE ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-OldHdSndOff		DD	0
-OldHdSndSeg		DD	0
+OldHdSndOff			DD	0
+OldHdSndSeg			DD	0
 DSBaseAddress		DD	0
-Old0x21			DD	0
-Old0xA1			DD	0
+Old0x21				DD	0
+Old0xA1				DD	0
 DebSndLockData:;*************************************************************
 SndMyDSSelector		DD	0
-BuffPtr			DD	0
-PhysAddDMA8		DD	0
+BuffPtr				DD	0
+PhysAddDMA8			DD	0
 SelectorDMA8		DD	0
-OffDMA8			DD	0
-PageDMA8		DD	0
+OffDMA8				DD	0
+PageDMA8			DD	0
 OffResCalcDMA8		DD	0
 PhysAddDMA16		DD	0
 SelectorDMA16		DD	0
-OffDMA16		DD	0
-PageDMA16		DD	0
+OffDMA16			DD	0
+PageDMA16			DD	0
 OffResCalcDMA16		DD	0
-SbBase			DD	0
-SbIRQ			DD	0
-SbDMA8			DD	0
-SbDMA16 		DD	0
-SbSampSpeed		DD	0
-MixerIndex		DD	0
-MixerData		DD	0
-DSPReset		DD	0
-DSPData			DD	0
+SbBase				DD	0
+SbIRQ				DD	0
+SbDMA8				DD	0
+SbDMA16 			DD	0
+SbSampSpeed			DD	0
+MixerIndex			DD	0
+MixerData			DD	0
+DSPReset			DD	0
+DSPData				DD	0
 DSPStateCommand		DD	0
 DSPStateAck8		DD	0
-DSPAck16		DD	0
-State16Bits		DD	0
-State8Bits		DD	0
-OutType			DD	0
-InType			DD	0
+DSPAck16			DD	0
+State16Bits			DD	0
+State8Bits			DD	0
+OutType				DD	0
+InType				DD	0
 BuffCalc8Bit		DD	0
 BuffCalc16Bit		DD	0
 TempVcCopyBuff		DD	0
@@ -938,67 +966,51 @@ EffectVcBuff		DD	0
 AddrProced8Bit		DD	0
 AddrProced16Bit		DD	0
 ;------Voices Data Out ---
-MaxNbVoice		DD	32
-VoicePtr:		DD	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-			DD	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-WaitVoicePtr:		DD	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
-			DD	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+MaxNbVoice			DD	MAX_VOICES
+VoicePtr:			TIMES MAX_VOICES DD 'HELO' ; 0xceefceef
+QueueVoicePtr:		TIMES MAX_VOICES DD 'QEQE' ; 0xbeefbeef
 ;------Voice Data In -----
-RecordState		DD	0
+RecordState			DD	0
 RecordBuffPtr		DD	0
 RecordNbBloc		DD	0
 RecordSizeBloc		DD	0
 Record1stBlocPtr	DD	0
 ;------Adresse de fonction d'addition au Buffer de calcul
 AddrProcAddBCalc:
-AddrAdd_BCalc8BitM:	DD	AddVc8BitM_BCalc8BitM,AddVc8BitS_BCalc8BitM
-			DD	AddVc16BitM_BCalc8BitM,AddVc16BitS_BCalc8BitM
-AddrAdd_BCalc8BitS:	DD	AddVc8BitM_BCalc8BitS,AddVc8BitS_BCalc8BitS
-			DD	AddVc16BitM_BCalc8BitS,AddVc16BitS_BCalc8BitS
-AddrAdd_BCalc16BitM:	DD	AddVc8BitM_BCalc16BitM,AddVc8BitS_BCalc16BitM
-			DD	AddVc16BitM_BCalc16BitM,AddVc16BitS_BCalc16BitM
-AddrAdd_BCalc16BitS:	DD	AddVc8BitM_BCalc16BitS,AddVc8BitS_BCalc16BitS
-			DD	AddVc16BitM_BCalc16BitS,AddVc16BitS_BCalc16BitS
-BuffVc_SpeedBuffVc:	DD	Buff8BitM_SpeedBuff8BitM
-			DD	Buff8BitS_SpeedBuff8BitS
-			DD	Buff16BitM_SpeedBuff16BitM
-			DD	Buff16BitS_SpeedBuff16BitS
+AddrAdd_BCalc8BitM:
+					DD	AddVc8BitM_BCalc8BitM,AddVc8BitS_BCalc8BitM
+					DD	AddVc16BitM_BCalc8BitM,AddVc16BitS_BCalc8BitM
+AddrAdd_BCalc8BitS:
+					DD	AddVc8BitM_BCalc8BitS,AddVc8BitS_BCalc8BitS
+					DD	AddVc16BitM_BCalc8BitS,AddVc16BitS_BCalc8BitS
+AddrAdd_BCalc16BitM:
+					DD	AddVc8BitM_BCalc16BitM,AddVc8BitS_BCalc16BitM
+					DD	AddVc16BitM_BCalc16BitM,AddVc16BitS_BCalc16BitM
+AddrAdd_BCalc16BitS:
+					DD	AddVc8BitM_BCalc16BitS,AddVc8BitS_BCalc16BitS
+					DD	AddVc16BitM_BCalc16BitS,AddVc16BitS_BCalc16BitS
+BuffVc_SpeedBuffVc:
+					DD	Buff8BitM_SpeedBuff8BitM
+					DD	Buff8BitS_SpeedBuff8BitS
+					DD	Buff16BitM_SpeedBuff16BitM
+					DD	Buff16BitS_SpeedBuff16BitS
 SizeIncVc_BCalc:
-SizeIncVc_BCalc8BitM:	DD	SizeDMABuff/2,SizeDMABuff
-			DD	SizeDMABuff,SizeDMABuff*2
-SizeIncVc_BCalc8BitS:	DD	SizeDMABuff/4,SizeDMABuff/2
-			DD	SizeDMABuff/2,SizeDMABuff
-SizeIncVc_BCalc16BitM:	DD	SizeDMABuff/2,SizeDMABuff
-			DD	SizeDMABuff,SizeDMABuff*2
-SizeIncVc_BCalc16BitS:	DD	SizeDMABuff/4,SizeDMABuff/2
-			DD	SizeDMABuff/2,SizeDMABuff
-SizeEchant:		DD	1,2,2,4
+SizeIncVc_BCalc8BitM:
+					DD	SizeDMABuff/2,SizeDMABuff
+					DD	SizeDMABuff,SizeDMABuff*2
+SizeIncVc_BCalc8BitS:
+					DD	SizeDMABuff/4,SizeDMABuff/2
+					DD	SizeDMABuff/2,SizeDMABuff
+SizeIncVc_BCalc16BitM:
+					DD	SizeDMABuff/2,SizeDMABuff
+					DD	SizeDMABuff,SizeDMABuff*2
+SizeIncVc_BCalc16BitS:
+					DD	SizeDMABuff/4,SizeDMABuff/2
+					DD	SizeDMABuff/2,SizeDMABuff
+SizeEchant:
+					DD	1,2,2,4
 FinSndLockData:;*************************************************************
 
-; CONST ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-; ----- Capabilities ----------------
-Out8			EQU	1
-Out16			EQU	2
-OutMono			EQU	4
-OutStereo		EQU	8
-In8			EQU	16
-In16			EQU	32
-InMono			EQU	64
-InStereo		EQU	128
-FullDuplex		EQU	256
-AutoDetect		EQU	512
-; -----------------------------------
-SizeDMABuff		EQU	512   ; pow 2
-VolMask			EQU	0x1ff    ; 63 Vol Norm
-SpeedMask		EQU	0x7ff	 ; 128 Vitesse Norm
-; ----- Effect ----------------------
-ChgSpeed		EQU	1
-ChgVol			EQU	2
-;VcReverse		EQU	4
-; ----- Voice State -----------------
-VcInBoucle		EQU	1
-VcStopped		EQU	2
 ; NOM DE LA CARTE ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 CardName		DB	"Sound Blaster 16 or 100% compatible",0
