@@ -144,6 +144,10 @@ VoiceNoEff8BM:
 		MOV			EAX,[ESI-4+MAX_VOICES*4] ; read QueueVoicePtr
 		MOV			[ESI-4],EAX ; write to VoicePtr
 		MOV			DWORD [ESI-4+MAX_VOICES*4], 0 ; clear QueueVoicePtr
+		; switch to effect ?
+		CMP			DWORD [EAX+Voice.Effect],BYTE 0
+		JNE			VoiceEff8BM.VcMixRemainBytes
+		; else keep with no effect
 		JMP			SHORT .VcMixRemainBytes
 .VcPasQueued:
 		XOR			EAX,EAX
@@ -449,13 +453,16 @@ VoiceEff8BM:
 
 		MOV			EAX,[EDX-4]
 		OR			ECX,ECX
-		JZ			NEAR .PasFinVoice1
+		MOV			ESI,EDX ; restore ESI as VoicePtr
+		JZ			.PasFinVoice1
 		; Traitement Dernier Bloc -----------------------------------
 		TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
 		JZ			.VcPasInBcle
 		; Traitement Voix en Boucle --------
 
 .VcInBcle:
+.VcMixRemainBytes:
+;*** do mix remaining bytes of current voice **********************
 		CALL		GetBaseAddress
 		MOV			EDX,[EAX+Voice.Speed]
 
@@ -480,6 +487,12 @@ VoiceEff8BM:
 
 		CALL		EAX
 		POP			EAX
+
+
+		; test again looping as this could be a new queued Voice not looping
+		TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
+		JZ			.FinVcEff ; bypass queued check as this happen only for new Queued voice
+
 		OR			ECX,ECX
 		JNZ			.VcInBcle
 
@@ -489,6 +502,24 @@ VoiceEff8BM:
 
 		JMP			SHORT .PasFinVoice1
 .VcPasInBcle:
+; check if this voice is queued
+		TEST		[EAX+Voice.VcSTATE],DWORD VcQueued
+		JZ			.VcPasQueued
+; current voice ended, but queued: so use queued voice instead
+		CMP			DWORD [ESI-4+MAX_VOICES*4], BYTE 0 ; check QueueVoicePtr not null
+		JE			.VcPasQueued
+		AND 		DWORD [EAX+Voice.VcSTATE], ~(VcQueued) ; delete queued FLAG
+		MOV			EAX,[ESI-4+MAX_VOICES*4] ; read QueueVoicePtr
+		MOV			[ESI-4],EAX ; write to VoicePtr
+		MOV			DWORD [ESI-4+MAX_VOICES*4], 0 ; clear QueueVoicePtr
+		; switch to no effect ?
+		CMP			DWORD [EAX+Voice.Effect],BYTE 0
+		JE			VoiceNoEff8BM.VcMixRemainBytes
+		; else keep with effect
+		JMP			SHORT .VcMixRemainBytes
+.VcPasQueued:
+		JECXZ		.FinVcEff
+
 		MOV			EBP,ECX
 		CALL		GetBaseAddress
 		MOV			EDI,[EBX+BuffCalc8Bit]	; Ajout Des Voix ----
@@ -634,6 +665,10 @@ VoiceNoEff8BS:
 		MOV			EAX,[ESI-4+MAX_VOICES*4] ; read QueueVoicePtr
 		MOV			[ESI-4],EAX ; write to VoicePtr
 		MOV			DWORD [ESI-4+MAX_VOICES*4], 0 ; clear QueueVoicePtr
+		; switch to effect ?
+		CMP			DWORD [EAX+Voice.Effect],BYTE 0
+		JNE			VoiceEff8BS.VcMixRemainBytes
+		; else keep with no effect
 		JMP			SHORT .VcMixRemainBytes
 .VcPasQueued:
 
@@ -655,9 +690,9 @@ VoiceNoEff8BS:
 		MOV			[EAX+Voice.Pos],ESI
 ;***********************************************************************
 .FinVcNEff:
-		POP			EBP
 		POP			ECX
 		POP			ESI
+		POP			EBP
 
 		RET
 
@@ -942,6 +977,7 @@ VoiceEff8BS:
 
 		MOV			EAX,[EDX-4]
 		OR			ECX,ECX
+		MOV			ESI,EDX ; restore ESI as VoicePtr
 		JZ			NEAR .PasFinVoice1
 		; Traitement Dernier Bloc -----------------------------------
 		TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
@@ -949,6 +985,8 @@ VoiceEff8BS:
 		; Traitement Voix en Boucle --------
 
 .VcInBcle:
+.VcMixRemainBytes:
+;*** do mix remaining bytes of current voice **********************
 		CALL		GetBaseAddress
 		MOV			EDX,[EAX+Voice.Speed]
 
@@ -970,9 +1008,13 @@ VoiceEff8BS:
 		POP			EDX
 		POP			EDI
 		POP			ECX
-
 		CALL		EAX
 		POP			EAX
+
+		; test again looping as this could be a new queued Voice not looping
+		TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
+		JZ			.FinVcEff ; bypass queued check as this happen only for new Queued voice
+
 		OR			ECX,ECX
 		JNZ			.VcInBcle
 
@@ -982,6 +1024,24 @@ VoiceEff8BS:
 
 		JMP			SHORT .PasFinVoice1
 .VcPasInBcle:
+; check if this voice is queued
+		TEST		[EAX+Voice.VcSTATE],DWORD VcQueued
+		JZ			.VcPasQueued
+; current voice ended, but queued: so use queued voice instead
+		CMP			DWORD [ESI-4+MAX_VOICES*4], BYTE 0 ; check QueueVoicePtr not null
+		JE			.VcPasQueued
+		AND 		DWORD [EAX+Voice.VcSTATE], ~(VcQueued) ; delete queued FLAG
+		MOV			EAX,[ESI-4+MAX_VOICES*4] ; read QueueVoicePtr
+		MOV			[ESI-4],EAX ; write to VoicePtr
+		MOV			DWORD [ESI-4+MAX_VOICES*4], 0 ; clear QueueVoicePtr
+		; switch to no effect ?
+		CMP			DWORD [EAX+Voice.Effect],BYTE 0
+		JE			VoiceNoEff8BS.VcMixRemainBytes
+		; else keep with effect
+		JMP			SHORT .VcMixRemainBytes
+.VcPasQueued:
+		JECXZ		.FinVcEff
+
 		MOV			EBP,ECX
 		CALL		GetBaseAddress
 		MOV			EDI,[EBX+BuffCalc8Bit]	; Ajout Des Voix ----
@@ -1129,6 +1189,10 @@ VoiceNoEff16BM:
 		MOV			EAX,[ESI-4+MAX_VOICES*4] ; read QueueVoicePtr
 		MOV			[ESI-4],EAX ; write to VoicePtr
 		MOV			DWORD [ESI-4+MAX_VOICES*4], 0 ; clear QueueVoicePtr
+		; switch to effect ?
+		CMP			DWORD [EAX+Voice.Effect],BYTE 0
+		JNE			VoiceEff16BM.VcMixRemainBytes
+		; else keep with no effect
 		JMP			SHORT .VcMixRemainBytes
 .VcPasQueued:
 
@@ -1436,6 +1500,7 @@ VoiceEff16BM:
 
 		MOV			EAX,[EDX-4]
 		OR			ECX,ECX
+		MOV			ESI,EDX ; restore ESI as VoicePtr
 		JZ			NEAR .PasFinVoice1
 		; Traitement Dernier Bloc -----------------------------------
 		TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
@@ -1443,6 +1508,8 @@ VoiceEff16BM:
 		; Traitement Voix en Boucle --------
 
 .VcInBcle:
+.VcMixRemainBytes:
+;*** do mix remaining bytes of current voice **********************
 		CALL		GetBaseAddress
 		MOV			EDX,[EAX+Voice.Speed]
 
@@ -1467,6 +1534,11 @@ VoiceEff16BM:
 
 		CALL		EAX
 		POP			EAX
+
+		; test again looping as this could be a new queued Voice not looping
+		TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
+		JZ			.FinVcEff ; bypass queued check as this happen only for new Queued voice
+
 		OR			ECX,ECX
 		JNZ			.VcInBcle
 
@@ -1476,6 +1548,24 @@ VoiceEff16BM:
 
 		JMP			SHORT .PasFinVoice1
 .VcPasInBcle:
+; check if this voice is queued
+		TEST		[EAX+Voice.VcSTATE],DWORD VcQueued
+		JZ			.VcPasQueued
+; current voice ended, but queued: so use queued voice instead
+		CMP			DWORD [ESI-4+MAX_VOICES*4], BYTE 0 ; check QueueVoicePtr not null
+		JE			.VcPasQueued
+		AND 		DWORD [EAX+Voice.VcSTATE], ~(VcQueued) ; delete queued FLAG
+		MOV			EAX,[ESI-4+MAX_VOICES*4] ; read QueueVoicePtr
+		MOV			[ESI-4],EAX ; write to VoicePtr
+		MOV			DWORD [ESI-4+MAX_VOICES*4], 0 ; clear QueueVoicePtr
+		; switch to no effect ?
+		CMP			DWORD [EAX+Voice.Effect],BYTE 0
+		JE			VoiceNoEff16BM.VcMixRemainBytes
+		; else keep with effect
+		JMP			SHORT .VcMixRemainBytes
+.VcPasQueued:
+		JECXZ		.FinVcEff
+
 		MOV			EBP,ECX
 		CALL		GetBaseAddress
 		MOV			EDI,[EBX+BuffCalc16Bit]	; Ajout Des Voix ----
@@ -1619,6 +1709,10 @@ VoiceNoEff16BS:
 		MOV			EAX,[ESI-4+MAX_VOICES*4] ; read QueueVoicePtr
 		MOV			[ESI-4],EAX ; write to VoicePtr
 		MOV			DWORD [ESI-4+MAX_VOICES*4], 0 ; clear QueueVoicePtr
+		; switch to effect ?
+		CMP			DWORD [EAX+Voice.Effect],BYTE 0
+		JNE			VoiceEff16BS.VcMixRemainBytes
+		; else keep with no effect
 		JMP			SHORT .VcMixRemainBytes
 .VcPasQueued:
 
@@ -1926,13 +2020,16 @@ VoiceEff16BS:
 
 		MOV			EAX,[EDX-4]
 		OR			ECX,ECX
-		JZ			NEAR .PasFinVoice1
+		MOV			ESI,EDX ; restore ESI as VoicePtr
+		JZ			.PasFinVoice1
 		; Traitement Dernier Bloc -----------------------------------
 		TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
 		JZ			.VcPasInBcle
 		; Traitement Voix en Boucle --------
 
 .VcInBcle:
+.VcMixRemainBytes:
+;*** do mix remaining bytes of current voice **********************
 		CALL		GetBaseAddress
 		MOV			EDX,[EAX+Voice.Speed]
 
@@ -1957,6 +2054,11 @@ VoiceEff16BS:
 
 		CALL		EAX
 		POP			EAX
+
+		; test again looping as this could be a new queued Voice not looping
+		TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
+		JZ			.FinVcEff ; bypass queued check as this happen only for new Queued voice
+
 		OR			ECX,ECX
 		JNZ			.VcInBcle
 
@@ -1966,6 +2068,24 @@ VoiceEff16BS:
 
 		JMP			SHORT .PasFinVoice1
 .VcPasInBcle:
+; check if this voice is queued
+		TEST		[EAX+Voice.VcSTATE],DWORD VcQueued
+		JZ			.VcPasQueued
+; current voice ended, but queued: so use queued voice instead
+		CMP			DWORD [ESI-4+MAX_VOICES*4], BYTE 0 ; check QueueVoicePtr not null
+		JE			.VcPasQueued
+		AND 		DWORD [EAX+Voice.VcSTATE], ~(VcQueued) ; delete queued FLAG
+		MOV			EAX,[ESI-4+MAX_VOICES*4] ; read QueueVoicePtr
+		MOV			[ESI-4],EAX ; write to VoicePtr
+		MOV			DWORD [ESI-4+MAX_VOICES*4], 0 ; clear QueueVoicePtr
+		; switch to no effect ?
+		CMP			DWORD [EAX+Voice.Effect],BYTE 0
+		JE			VoiceNoEff16BS.VcMixRemainBytes
+		; else keep with effect
+		JMP			SHORT .VcMixRemainBytes
+.VcPasQueued:
+		JECXZ		.FinVcEff
+
 		MOV			EBP,ECX
 		CALL		GetBaseAddress
 		MOV			EDI,[EBX+BuffCalc16Bit]	; Ajout Des Voix ----
