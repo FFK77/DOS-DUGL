@@ -432,13 +432,19 @@ QueueVoice:
 .ProceedAddV:
 		MOV			EAX,[EBP+PtrQAddToVoice]
 		MOV			EDX,[EBP+PtrQAddVoice]
+		AND 		DWORD [EAX+Voice.VcSTATE], ~(VcQueued) ; delete queued FLAG
+		OR			EDX,EDX
+		; save new queued voice or delete if pointer NULL
+		MOV			[ESI],EDX
+		; new queue voice NULL so operation is to delete the queue
+		JZ			.PasPosZero
+
 		OR			DWORD [EAX+Voice.VcSTATE], VcQueued ; enable queue flag
 		LEA			EDI,[EDX+Voice.Effect]
 		XOR			EAX,EAX
 		MOV			ECX,19
 		REP			STOSD
 
-		MOV			[ESI],EDX ; save new queued voice
 		MOV			EAX,[EBP+QVcStt]
 		MOV			ECX,[EBP+QVcEff]
 		MOV			[EDX+Voice.VcSTATE],EAX
@@ -498,12 +504,111 @@ ReplaceVoice:
 		PUSH		ESI
 		PUSH		EDI
 
+		CLI
+
+		; search if the voice to be added to queue exist
+		MOV			EDX,[EBP+PtrRAddVoice]
+		CALL		SearchVoiceIn
+		OR			EAX,EAX
+		JZ			SHORT .exitErrFail  ; Voice already exist => exit, error
+
+		; search if the voice to be queued exist
+		MOV			EDX,[EBP+PtrRAddToVoice]
+		CALL		SearchVoiceIn
+		OR			EAX,EAX
+		JNZ			SHORT .exitErrFail  ; Voice not found => exit, error
+
+		; delete any existing queued voice
+		CALL		GetBaseAddress
+		MOV			DWORD [EBX+EDX*4+QueueVoicePtr], 0
+		LEA			ESI,[EBX+EDX*4+VoicePtr]
+		JMP			SHORT .ProceedAddV
+.exitErrFail:
+		XOR			EAX,EAX
+		JMP			.End
+
+; replace voice In EDX Index  --------------------------------------------
+.ProceedAddV:
+		MOV			EDX,[EBP+PtrRAddVoice]
+		XOR			EAX,EAX
+		OR			EDX,EDX
+		MOV			[ESI],EDX ; save new voice
+		; new voice ptr NULL, just delete and exit
+		JZ			.PasPosZero
+		LEA			EDI,[EDX+Voice.Effect]
+		MOV			ECX,19
+		REP			STOSD
+
+		MOV			EAX,[EBP+RVcStt]
+		MOV			ECX,[EBP+RVcEff]
+		MOV			[EDX+Voice.VcSTATE],EAX
+		OR			ECX,ECX
+		JZ			.VcNoEff
+		MOV			ESI,[EBP+RVcPckPtr]
+		CMP			ESI,BYTE 0
+		JZ			.VcNoEff
+		MOV			[EDX+Voice.Effect],ECX
+
+		TEST		ECX,ChgSpeed
+		JZ			.PasEffChgSpeed
+		MOV			EAX,[ESI+VoicePack.Speed]
+		AND			EAX,SpeedMask
+		MOV			[EDX+Voice.Speed],EAX
+.PasEffChgSpeed:
+		TEST		ECX,ChgVol
+		JZ			.PasEffChgVol
+		MOV			EAX,[ESI+VoicePack.LeftVol]
+		MOV			EDX,[ESI+VoicePack.RightVol]
+		AND			EAX,VolMask
+		AND			EDX,VolMask
+		MOV			[EDX+Voice.LeftVol],EAX
+		MOV			[EDX+Voice.RightVol],EDX
+.PasEffChgVol:
+.VcNoEff:
+		MOV			EAX,[EBP+RVcPos]
+		OR			EAX,EAX
+		JZ			.PosZero
+		MOV			EDI,[EDX+Voice.Size]
+		CMP			EAX,EDI
+		JAE			.PosZero
+		CALL		GetBaseAddress
+		MOV			EDI,EDX
+		MOV			ECX,[EDI+Voice.Type]
+		XOR			EDX,EDX
+		MOV			ECX,[EBX+ECX*4+SizeEchant]
+		DIV			ECX
+		MUL			ECX
+		MOV			[EDI+Voice.Pos],EAX
+		JMP			SHORT .PasPosZero
+.PosZero:
+		MOV			[EDX+Voice.Pos],EAX
+.PasPosZero:
+		MOV			EAX,1
+.End:
+		STI
 
 		POP			EDI
 		POP			ESI
 		POP			EBX
 	RETURN
 
+ExistVoice:
+	ARG	PtrVoiceSearch, 4
+		PUSH		EBX
+		PUSH		ESI
+
+		MOV			EDX,[EBP+PtrVoiceSearch]
+		CALL		SearchVoiceIn
+		OR			EAX,EAX
+		JZ			SHORT .exist
+		JMP			SHORT .NotExist
+.exist:
+		MOV			AL,1
+.NotExist:
+
+		POP			ESI
+		POP			EBX
+	RETURN
 
 ;IN EDX Ptr Vc -----------------
 ;OUT EAX= 0 found, else not found, EDX voice index found
@@ -514,6 +619,7 @@ SearchVoiceIn:
 		PUSH		EBX
 
 		CALL		GetBaseAddress
+		XOR			EAX,EAX ; init not found
 		OR			EDX,EDX
 		MOV			ECX,MAX_VOICES
 		JZ			SHORT .Error ; check if null pointer
@@ -529,16 +635,15 @@ SearchVoiceIn:
 		JMP			SHORT .Error
 .VcFnd:
 		MOV			EDX,MAX_VOICES
-		XOR			EAX,EAX
 		SUB			EDX,ECX ; EDX = index found
 		JMP			SHORT .Ok
 .Error:
-		OR			EAX,BYTE -1
+		OR			EAX,BYTE 1
 .Ok:
 		POP			EBX
 		POP			ESI
 		POP			ECX
-		RET
+	RET
 
 
 ;******* Lock & Unlock Vc&Vc DATA ******************************************

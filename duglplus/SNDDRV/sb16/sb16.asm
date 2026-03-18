@@ -21,7 +21,7 @@ SB_DMA8				DD	0
 SB_DMA16			DD	0
 SB_SampSpeed		DD	0
 Error				DD	0
-Version				DD	'0600' ; version 0.5
+Version				DB	0, 6, 'a', 1; version 0.6 alpha1
 resv:				DD	0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
 					DD	0,0,0,0,0,0,0,0
 DrvBuffPtr			DD	0
@@ -44,9 +44,9 @@ VoiceMixer:
 					DD	SetVoiceState,GetVoiceEffPack,SetVoiceEffPack
 					DD	GetVoicePos,SetVoicePos,DeleteVoice
 					DD	DeleteAllVoices,GetCountVoices
-					DD	QueueVoice,ReplaceVoice
+					DD	QueueVoice,ReplaceVoice,ExistVoice
 					DD	NS,NS,NS,NS,NS,NS,NS,NS,NS
-					DD	NS,NS,NS,NS,NS,NS,NS,NS,NS
+					DD	NS,NS,NS,NS,NS,NS,NS,NS
 					DD	NS,NS,NS,NS,NS,NS,NS,NS
 					DD	NS,NS,NS,NS,NS,NS,NS,NS
 					DD	NS,NS,NS,NS,NS,NS,NS,NS
@@ -79,8 +79,8 @@ FullDuplex		EQU	256
 AutoDetect		EQU	512
 ; -----------------------------------
 SizeDMABuff		EQU	512   ; pow 2
-VolMask			EQU	0x1ff    ; 64 or 0x40 Vol Norm
-SpeedMask		EQU	0x7ff	 ; 128 or 0x80 Vitesse Norm
+VolMask			EQU	0x1ff    ; 64 or 0x40 is Vol Norm or 1.0 max 511 or x 5.0
+SpeedMask		EQU	0x7ff	 ; 128 or 0x80 is Speed Norm or 1.0 max 2047 or x 16.0
 ; ----- Effect ----------------------
 ChgSpeed		EQU	1
 ChgVol			EQU	2
@@ -967,8 +967,8 @@ AddrProced8Bit		DD	0
 AddrProced16Bit		DD	0
 ;------Voices Data Out ---
 MaxNbVoice			DD	MAX_VOICES
-VoicePtr:			TIMES MAX_VOICES DD 'HELO' ; 0xceefceef
-QueueVoicePtr:		TIMES MAX_VOICES DD 'QEQE' ; 0xbeefbeef
+VoicePtr:			TIMES MAX_VOICES DD 0
+QueueVoicePtr:		TIMES MAX_VOICES DD 0
 ;------Voice Data In -----
 RecordState			DD	0
 RecordBuffPtr		DD	0
