@@ -8,6 +8,9 @@
 
 #define MDEG_TO_RAD_STEP     3.14159265358979323846 / 180.0
 #define THETA_SMALL          0.0000001f
+#ifndef sincosf
+#define sincosf(x, ps, pc) { double ressind, rescosd; sincos(x, &ressind, &rescosd); *ps = (float)ressind; *pc=(float)rescosd; }
+#endif // sincosf
 
 DVEC4 zeroDVEC4 __attribute__ ((aligned (16))) = { {0.0f, 0.0f, 0.0f, 0.0f } };
 
@@ -216,8 +219,13 @@ DMatrix4 *GetRotDMatrix4(DMatrix4 *FMG, float Rx, float Ry, float Rz) {
     float rx=MDEG_TO_RAD_STEP*Rx;
     float ry=MDEG_TO_RAD_STEP*Ry;
     float rz=MDEG_TO_RAD_STEP*Rz;
-    float cx=cosf(rx),sx=sinf(rx),cy=cosf(ry),sy=sinf(ry),
-         cz=cosf(rz),sz=sinf(rz),sx_sy=sx*sy,cx_sy=cx*sy;
+    float cx,sx,cy,sy,cz,sz,sx_sy,cx_sy;
+    sincosf(rx, &sx, &cx);
+    sincosf(ry, &sy, &cy);
+    sincosf(rz, &sz, &cz);
+    sx_sy=sx*sy;
+    cx_sy=cx*sy;
+
     GetIdentityDMatrix4(FMG);
     FMG->rows[0].v[0]=cy*cz;
     FMG->rows[1].v[0]=cy*sz;
@@ -234,8 +242,9 @@ DMatrix4 *GetRotDMatrix4(DMatrix4 *FMG, float Rx, float Ry, float Rz) {
 
 DMatrix4 *GetXRotDMatrix4(DMatrix4 *FMX, float Rx) {
    float rx=MDEG_TO_RAD_STEP*Rx;
-   float cosr = cosf(rx);
-   float sinr = sinf(rx);
+   float cosr;
+   float sinr;
+   sincosf(Rx, &sinr, &cosr);
    GetIdentityDMatrix4(FMX);
    FMX->rows[1].v[1]=cosr; FMX->rows[1].v[2]=-sinr;
    FMX->rows[2].v[1]=sinr; FMX->rows[2].v[2]=cosr;
@@ -244,8 +253,8 @@ DMatrix4 *GetXRotDMatrix4(DMatrix4 *FMX, float Rx) {
 
 DMatrix4 *GetYRotDMatrix4(DMatrix4 *FMY, float Ry) {
    float ry=MDEG_TO_RAD_STEP*Ry;
-   float cosr = cosf(ry);
-   float sinr = sinf(ry);
+   float cosr,sinr;
+   sincosf(Ry,&sinr,&cosr);
    GetIdentityDMatrix4(FMY);
    FMY->rows[0].v[0]=cosr; FMY->rows[0].v[2]=sinr;
    FMY->rows[2].v[0]=-sinr; FMY->rows[2].v[2]=cosr;
@@ -254,8 +263,8 @@ DMatrix4 *GetYRotDMatrix4(DMatrix4 *FMY, float Ry) {
 
 DMatrix4 *GetZRotDMatrix4(DMatrix4 *FMZ, float Rz) {
    float rz=MDEG_TO_RAD_STEP*Rz;
-   float cosr = cosf(rz);
-   float sinr = sinf(rz);
+   float cosr,sinr;
+   sincosf(Rz,&sinr,&cosr);
    GetIdentityDMatrix4(FMZ);
    FMZ->rows[0].v[0]=cosr; FMZ->rows[0].v[1]=-sinr;
    FMZ->rows[1].v[0]=sinr; FMZ->rows[1].v[1]=cosr;

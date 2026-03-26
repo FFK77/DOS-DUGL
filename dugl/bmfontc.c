@@ -305,8 +305,7 @@ int  WidthBMText(DBMFONT *pBMFONT, char *str) {
     if (strIt == NULL || pBMFONT == NULL)
         return 0;
     while (*strIt != '\0') {
-        lastChar = (*strIt);
-        widthText += pBMFONT->CharsPlusX[(*strIt)];
+        widthText += pBMFONT->CharsPlusX[(lastChar = (*strIt))];
         strIt ++;
     }
     // special handling for last char: remove plus and add char width
@@ -319,15 +318,16 @@ int  WidthBMText(DBMFONT *pBMFONT, char *str) {
 int  WidthPosBMText(DBMFONT *pBMFONT, char *str, int pos) {
     unsigned char *strIt = (unsigned char*)str;
     int widthText = 0;
+    unsigned char lastChar = 0;
 
     if (strIt == NULL || pBMFONT == NULL)
         return 0;
     for (int i =0; i < pos &&  (*strIt) != '\0'; i++, strIt ++) {
-        if (strIt[1] != '\0') // next char isn't the end,
-            widthText += pBMFONT->CharsPlusX[(*strIt)];
-        else
-            widthText += pBMFONT->CharsWidth[(*strIt)];
+        widthText += pBMFONT->CharsPlusX[(lastChar = (*strIt))];
     }
+    // special handling for last char: remove plus and add char width
+    widthText -= pBMFONT->CharsPlusX[lastChar];
+    widthText += pBMFONT->CharsWidth[lastChar];
     return widthText;
 }
 
