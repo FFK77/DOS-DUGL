@@ -32,20 +32,20 @@ typedef struct {
 #define DS_VC_QUEUED	4
 
 // SoundDRV->InitSound(...) parameters
-#define DS_NOSOUND 	0  // Type8Bit & Type16Bit
-#define DS_OUT8BIT 	1  // Type8Bit
-#define DS_IN8BIT	2  // Type8Bit
+#define DS_NOSOUND 		0  // Type8Bit & Type16Bit
+#define DS_OUT8BIT 		1  // Type8Bit
+#define DS_IN8BIT		2  // Type8Bit
 #define DS_OUT16BIT 	1  // Type16Bit
-#define DS_IN16BIT 	2  // Type16Bit
-#define DS_MONO		0  // Sound Type
-#define DS_STEREO	1  // sound Type
+#define DS_IN16BIT 		2  // Type16Bit
+#define DS_MONO			0  // Sound Type
+#define DS_STEREO		1  // sound Type
 // capabilities
-#define DS_CAP_OUT8		0x001
+#define DS_CAP_OUT8			0x001
 #define DS_CAP_OUT16		0x002
 #define DS_CAP_OUT_MONO		0x004
 #define DS_CAP_OUT_STEREO	0x008
-#define DS_CAP_IN8		0x010
-#define DS_CAP_IN16		0x020
+#define DS_CAP_IN8			0x010
+#define DS_CAP_IN16			0x020
 #define DS_CAP_IN_MONO		0x040
 #define DS_CAP_IN_STEREO	0x080
 #define DS_CAP_FULLDUPLEX	0x100
@@ -64,7 +64,7 @@ unsigned int Signature,		//   ==	"FSDR"
 	     Card_BasePort,Card_IRQ,Card_DMA8,Card_DMA16,
 	     Cur_SampSpeed,
 	     LastError,
-             Version,
+		 Version,
 	     resv[24];
 	void *DrvBuffPtr;
 	// sound card init/control functions
@@ -91,9 +91,11 @@ unsigned int Signature,		//   ==	"FSDR"
 	void (*SetInput)(int SelectInputLeft,int SelectInputRight);
 	int  ResvGlob[44];
 	// Mixer functions
-	int  (*AddVoice)(DVoice *Vc,int VcEffect,int VcState,DVoicePack *VcP,
-	                 unsigned int Pos);
+	// Add new DVoice, return 1 if success, Existing voice will not be accepted
+	int  (*AddVoice)(DVoice *Vc,int VcEffect,int VcState,DVoicePack *VcP, unsigned int Pos);
+	// Prepare DVoice, need to be called before any Add or Queue ..
 	int  (*PrepareVoice)(DVoice *Vc);
+	// to be called once DVoice isn't required and going to be Destroyed
 	int  (*UnprepareVoice)(DVoice *Vc);
 	int  (*GetVoiceState)(DVoice *Vc,int *VcState);
 	int  (*SetVoiceState)(DVoice *Vc,int VcState);
@@ -101,15 +103,20 @@ unsigned int Signature,		//   ==	"FSDR"
 	int  (*SetVoiceEffPack)(DVoice *Vc,int VcEffect,DVoicePack *VcP);
 	int  (*GetVoicePos)(DVoice *Vc,int *VcVrPos);
 	int  (*SetVoicePos)(DVoice *Vc,int VcVrPos);
+	// delete Voice Vc
 	int  (*DeleteVoice)(DVoice *Vc);
+	// delete all Voices
 	void (*DeleteAllVoices)();
+	// return current count of all Voices including stopped ones
 	int  (*GetCountVoices)();
-	int  (*QueueVoice)(DVoice *toVoice, DVoice *Vc,int VcEffect,int VcState,DVoicePack *VcP,
-	                 unsigned int Pos);
-	int  (*ReplaceVoice)(DVoice *toVoice, DVoice *Vc,int VcEffect,int VcState,DVoicePack *VcP,
-	                 unsigned int Pos);
+	// return 1 if Vc has been successfully queued to toVoice, set Vc to NULL to just delete the queue
+	int  (*QueueVoice)(DVoice *toVoice, DVoice *Vc,int VcEffect,int VcState,DVoicePack *VcP, unsigned int Pos);
+	// return 1 if toVoice has been replace by Vc, if successfull delete also any queued DVoice, set Vc to NULL to just delete
+	int  (*ReplaceVoice)(DVoice *toVoice, DVoice *Vc,int VcEffect,int VcState,DVoicePack *VcP, unsigned int Pos);
+	// return true if Voice already exist, even if state stopped or Queued
+	bool (*ExistVoice)(DVoice *Vc);
 
-	int  VoiceMixer[114];
+	int  VoiceMixer[113];
 } SoundDRV;
 
 #ifdef __cplusplus
@@ -120,12 +127,13 @@ int  LoadSoundDRV(SoundDRV **SndDrv,char *Fname);
 int  LoadMemSoundDRV(SoundDRV **SndDrv,void *In,int SizeIn);
 void DestroySoundDRV(SoundDRV *SndDrv);
 
-int  LoadWAV(DVoice *Vc,char *Fname);
-int  LoadMemWAV(DVoice *Vc,void *In,int SizeIn);
+int  CreateDVoice(DVoice **Vc, bool bits16, bool stereo, int sampleSpeed, int countSamples);
+void DestroyDVoice(DVoice *Vc);
+int  LoadWAV(DVoice **Vc,char *Fname);
+int  LoadMemWAV(DVoice **Vc,void *In,int SizeIn);
 int  SaveWAV(DVoice *Vc,char *Fname);
 int  SaveMemWAV(DVoice *Vc,void *Out);
 int  SizeSaveWAV(DVoice *Vc);
-void DestroyVoice(DVoice *Vc);
 
 #ifdef __cplusplus
            }
