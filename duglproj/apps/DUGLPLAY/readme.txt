@@ -1,4 +1,4 @@
-DUGL Player 1.0 Alpha 2 - released 2026-03-02
+DUGL Player 1.0 Alpha 3 - released 2026-03-26
 =============================================
 
 About
@@ -18,7 +18,7 @@ like LibOGG, LibVorbis and LibTheora by Xiph Foundation, source code is availabl
 under the BSD-like Xiph license, libx264, libmp3lame, libxml2 .. 
 each library under it's own licence
 
-You can use/reuse/modify source code if "DUGL Player" or part of it 
+You can use/reuse/modify source code of "DUGL Player" or part of it 
 at the following conditions :
 1) Don't pretend that you made it or hold copyright over it.
 
@@ -31,6 +31,7 @@ System requirements
   depends from played file, especially video frame size and rate,
   for 640x480 OGG Theora at 30 fps with Vorbis sound 1 GHz is required
 - Graphics card with VESA 2.0 support
+- Sound card "Sound Blaster 16" or 100% compatible or emulated (tested successfully with VSBHDA)
 - Optional Mouse and driver (CTmouse from FreeDOS, Logitech driver, ...)
 
 Features
@@ -50,7 +51,6 @@ Missing Features/TODO
 ---------------------
 
 - Keep Aspect Ratio
-- Playing Video sound
 - playing video at full res : currently high-res videos are downsampled to 640x480
 - Detect/handle video orientation
 - Real Time zooming
@@ -62,7 +62,7 @@ Keyboard shortcuts :
 
 - Alt+X : Exit immedialtely
 - Alt+S : Save a BMP screenshot
-- Space+Tab : Pause/continue playing
+- Space+Tab or keyboard 'P' : Pause/continue playing
 - Space+Enter : Switch between full screen and GUI mode
 - F2  : Enable/Disable fast YUV2RGB Mode
 - F3  : Show open dialog
@@ -117,5 +117,11 @@ History:
   current user directory.
 - several fixes and cleanup
 
+26 march 2026 : 1.0 alpha 3
+
+- Add experimental sound decoding/support using Sound Blaster 16 driver
+- Improve config file with new sound audio paramters, true|false to enable/disable,
+- Add reverting to 640x480 if selected config file video resolution isn't available ...
+- Keyboard 'P' now pause continue playing current video
 
  

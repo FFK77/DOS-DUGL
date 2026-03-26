@@ -71,12 +71,18 @@
     Add experimental seeking using the horizontal slider.
     Save/restore working directory at player startup/close to avoid changing current user directory.
     several fixes and cleanup
+    26 march 2026 : 1.0 alpha 3
+    Add experimental sound decoding/support using Sound Blaster 16 driver
+    Improve config file with new sound audio paramters, true|false to enable disable,
+    Add reverting to 640x480 if selected config file video resolution isn't available ...
+    Keyboard 'P' now pause continue playing current video
 */
 
 #include <stdio.h>
 #include <conio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <dir.h>
 #include <math.h>
 
@@ -94,6 +100,8 @@ extern "C" {
 #include <libavutil/pixfmt.h>
 #include <libavutil/frame.h>
 #include <libavutil/imgutils.h>
+#include <libavutil/cpu.h>
+#include <libswresample/swresample.h>
 #include <zlib.h>
 
 // internal
@@ -166,7 +174,7 @@ unsigned char *vFinal = NULL;
 // -----------------------
 // FFMPEG GLOBAL
 AVFormatContext* pFormatCtx = NULL;
-// FFmpeg codec context.
+// FFmpeg video codec context.
 AVCodecContext* pVideoCodecCtx = NULL;
 // FFmpeg codec for video.
 const AVCodec* pVideoCodec = NULL;
@@ -179,13 +187,73 @@ AVStream *video_stream = NULL;
 // Video stream number in file
 int videoStreamIndex = -1;
 static enum AVPixelFormat pix_fmt;
+// Audio ######
+int audioStreamIndex = -1;
+// FFmpeg codec for audio
+const AVCodec* pAudioCodec = NULL;
+// FFmpeg Audio codec context.
+AVCodecContext* pAudioCodecCtx = NULL;
+// Audio codec param
+AVCodecParameters *pCodecAudioParam = NULL;
+// FFmpeg parser codec for video.
+AVCodecParserContext *pAudioCodecParser = NULL;
+// audio Stream
+AVStream *audio_stream = NULL;
+// audio convert context
+struct SwrContext *au_convert_ctx;
 
 static uint8_t *video_dst_data[4] = {NULL};
 static int      video_dst_linesize[4];
 static int      video_dst_bufsize;
 static AVFrame  *videoFrame = NULL;
+static AVFrame  *audioFrame = NULL;
 static AVPacket *pkt = NULL;
 int FFZone = 0, FFFail = 0;
+
+// audio handling
+char soundDriverFileName[256] = "sb16.drv";
+#define AUDIO_RING_SIZE 4
+DVoice *audioRing[AUDIO_RING_SIZE];
+int audioRingStart = 0;
+int audioRingEnd = 0;
+int audioRingCount = 0;
+int audioFrameSamples = 0;
+int countRingQueued = 0;
+int countRingAdd = 0;
+int curVoicePos = 0;
+SoundDRV *SndDrv = NULL;
+void *SndBuff = NULL;
+
+bool Audio16Bits = false,
+     AudioStereo = false,
+     AudioEnabled = false,
+     AudioMuted = false,
+     SoundEnabled = true,
+     AboutDebugInfo = false;
+int AudioSamplingSpeed = 22000;
+int VoiceSampleSize = 8000;
+int MasterAudioVolume = 230;
+int VoiceAudioVolume = 230;
+int OutGainAudioVolume = 230;
+
+
+// load sound driver, init/detect sound card, reset audioRing buffer
+bool InitSound(bool bits16, bool stereo, int sampleSpeed);
+// uninstall sound driver, free/reset audio ring buffer
+void CloseSound();
+// Voice Effect Pack
+DVoicePack VP = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
+// Add Voice
+int AddVoice(DVoice *Vc,int State, bool updateSpeed);
+// Queue Voice
+int QueueVoice(DVoice *toQueueVc,DVoice *Vc,int State, bool updateSpeed);
+
+// Create/Prepare Audio Ring DVoices
+bool CreatePrepAudioRingDVoices();
+// update sampling speed of AudioRingDVoice
+void UpdateAudioRingDVoicesSamplingSpeed(int newSampling);
+// Destroy/Unprepare Audio Ring DVoices
+bool DestroyUnprepAudioRingDVoices();
 
 
 // return 0 if success, code error if failed
@@ -215,7 +283,7 @@ char SynchBuff[SIZE_SYNCH_BUFF];
 // Windows Handler
 WinHandler *WH;
 // Main window -------------------------------
-String sMainWinName("DUGL Video Player 1.0 alpha 2");
+String sMainWinName("DUGL Video Player 1.0 alpha 3");
 MainWin *MWDPlayer;
 GraphBox *GphBVideo;
 Menu *MWMn;
@@ -281,9 +349,6 @@ GraphBox *GphBAbout;
 Button *BtOkAbout;
 // events
 void BtOkAboutClick(),GphBDrawAbout(GraphBox *Me),OnGphBScanAbout(GraphBox *Me);
-// data
-int  RotPosSynch;
-char RotSynchBuff[SIZE_SYNCH_BUFF];
 //******* Global function ****************************
 // return 0 if success, code error if failed
 int OpenVid(char *FileName);
@@ -295,6 +360,7 @@ void CloseVid();
 void DGWaitRetrace();
 void UpdatePlayTime();
 bool IsFileExist(const char *fname);
+bool StringToBool(char *str);
 void LoadConfig();
 
 int main (int argc, char ** argv) {
@@ -302,14 +368,12 @@ int main (int argc, char ** argv) {
         printf("DUGL init error\n");
         exit(-1);
     }
-
     LoadConfig();
 
     if (!InstallKeyboard()) {
        DgQuit(); DgUninstallTimer();
        printf("Keyboard error\n");  exit(-1);
     }
-
     if (CreateSurf(&rendSurf16, screenX, screenY, 16)==0) {
       printf("no mem\n"); exit(-1);
     }
@@ -391,6 +455,8 @@ int main (int argc, char ** argv) {
        DestroySurf(MsPtr16);
        DestroySurf(MsPtr);
     }
+    // sound
+    InitSound(Audio16Bits, AudioStereo, AudioSamplingSpeed);
 
     //** GUI ************************************************
     // create the winHandler
@@ -465,6 +531,27 @@ int main (int argc, char ** argv) {
                 }
              } else {
                 if (GetNextFrame(Sframe16,0)==1) {
+                   if (audioRingCount > 0) {
+                     int previousToStartIdx = (audioRingStart+AUDIO_RING_SIZE-1)%AUDIO_RING_SIZE;
+                     if (!SndDrv->ExistVoice(audioRing[previousToStartIdx])) {
+                          if(SndDrv->GetCountVoices() == 0) {
+                             AddVoice(audioRing[audioRingStart], 0, true);
+                             countRingAdd++;
+                             audioRingCount--;
+                             audioRingStart=(audioRingStart+1)%AUDIO_RING_SIZE;
+                          }
+                     } else {
+                         if (!QueueVoice(audioRing[previousToStartIdx],audioRing[audioRingStart], 0, true)) {
+                             AddVoice(audioRing[audioRingStart], 0, true);
+                             countRingAdd++;
+                         } else {
+                             countRingQueued++;
+                         }
+                         audioRingCount--;
+                         audioRingStart=(audioRingStart+1)%AUDIO_RING_SIZE;
+                     }
+                   }
+
                    redrawVid=1;
                    if (!FrameAvlbl) FrameAvlbl=true;
                    frameskipped+=PosSynch-framenum-1; // we are too slow ? :(
@@ -501,7 +588,6 @@ int main (int argc, char ** argv) {
               CloseVid();
         }
       }
-
       // GUI
       if (EnableGUI) {
         // force playing also if menu are active
@@ -515,12 +601,9 @@ int main (int argc, char ** argv) {
         // space + enter : toogle full screen or back to gui if space+enter
         if ((WH->KeyFLAG&KB_SPACE_PR) && (WH->KeyFLAG&KB_ENTER_PR))
              OnMenuFullScr();
-        // space + tab : pause / continue
-        if ((WH->KeyFLAG&KB_SPACE_PR) && (WH->KeyFLAG&KB_TAB_PR))
+        // space + tab  or key P: pause / continue
+        if (((WH->KeyFLAG&KB_SPACE_PR) && (WH->KeyFLAG&KB_TAB_PR)) || (WH->Key==KB_KEY_QWERTY_P))
              OnMenuPauseCont();
-        // alt+P : Play
-        if (WH->Key==0x19 && (WH->KeyFLAG&KB_ALT_PR))
-          OnBtPlayClick();
         if (WH->CurWinNode->Item==MWDPlayer) {
           switch (WH->Key) {
             case KB_KEY_F2 : OnMenuInterpolateUV(); break; // F2
@@ -542,8 +625,8 @@ int main (int argc, char ** argv) {
         // space + enter : toogle full screen or back to gui if space+enter
         if ((keyFLAG&KB_SPACE_PR) && (keyFLAG&KB_ENTER_PR))
              OnMenuFullScr();
-        // space + tab : pause / continue
-        if ((keyFLAG&KB_SPACE_PR) && (keyFLAG&KB_TAB_PR))
+        // space + tab or key P: pause / continue
+        if (((keyFLAG&KB_SPACE_PR) && (keyFLAG&KB_TAB_PR)) || (keyCode==KB_KEY_QWERTY_P))
              OnMenuPauseCont();
         if (keyCode==0x19 &&  (keyFLAG&KB_ALT_PR))
           OnBtPlayClick();
@@ -644,7 +727,8 @@ int main (int argc, char ** argv) {
       }
     }
 
-
+    CloseVid();
+    CloseSound();
     DgQuit();
     UninstallKeyboard();
     DgUninstallTimer();
@@ -670,6 +754,20 @@ bool IsFileExist(const char *fname) {
     struct ffblk f;
     if (findfirst(fname, &f, FA_HIDDEN | FA_SYSTEM)==0)
        return true;
+    return false;
+}
+
+bool StringToBool(char *str) {
+    int lenStr = strlen(str);
+    if (lenStr == 1 && isdigit(str[0])) {
+        return (bool)atoi(str);
+    } else if (lenStr >=4) {
+        // to lower
+        for (int i =0;i<lenStr;i++)
+            str[i] = tolower(str[i]);
+        if (strcmp(str, "true") == 0)
+            return true;
+    }
     return false;
 }
 
@@ -725,6 +823,7 @@ void OnMenuCloseVid() {
 
 void OnMenuExit() {
     CloseVid();
+    CloseSound();
     DgQuit();
     UninstallKeyboard();
     DgUninstallTimer();
@@ -752,7 +851,6 @@ void OnMenuPauseCont() {
 }
 
 void OnMenuAbout() {
-    InitSynch(RotSynchBuff,&RotPosSynch,300.0);
     MWAbout->Show(); // show about
     MWAbout->Enable(); // set as the active window
 }
@@ -863,22 +961,21 @@ void BtOkAboutClick() {
 
 void OnGphBScanAbout(GraphBox *Me) {
   // synchronise
-//  if (Synch(RotSynchBuff,&RotPosSynch)>0)
-    Synch(RotSynchBuff,&RotPosSynch);
-    Me->Redraw();
+  Me->Redraw();
 
 }
+
 void GphBDrawAbout(GraphBox *Me) {
    char midText[256] = "";
 
    ClearSurf16(RGB16(0,0,0));
    ClearText();
    SetTextCol(WH->m_GraphCtxt->WinBlanc);
-   OutText16Mode("\n", AJ_MID);
+   if (!AboutDebugInfo) OutText16Mode("\n", AJ_MID);
    FntCol=RGB16(0,255,0); // green
-   OutText16Mode("DUGL Player 1.0 Alpha 2 - DOS Video Player\n", AJ_MID);
+   OutText16Mode("DUGL Player 1.0 Alpha 3 - DOS Video Player\n", AJ_MID);
    FntCol=RGB16(255,255,255); // white
-   OutText16Mode("(C) By FFK 2 March 2026\n\n", AJ_MID);
+   OutText16Mode("(C) By FFK 26 March 2026\n\n", AJ_MID);
    OutText16Mode("Developped using :\n", AJ_MID);
    FntCol=RGB16(255,255,0); // yellow
    OutText16ModeFormat(AJ_MID, midText, 255,"DUGL %s\n",DUGL_VERSION);
@@ -887,17 +984,33 @@ void GphBDrawAbout(GraphBox *Me) {
    FntCol=RGB16(255,255,0); // yellow
    OutText16ModeFormat(AJ_MID, midText, 255, "FFMPEG %s\n", av_version_info());
    FntCol=RGB16(255,255,255); // white
-   OutText16Mode("https://ffmpeg.org/\n\n", AJ_MID);
+   OutText16Mode("https://ffmpeg.org/\n", AJ_MID);
 
    FntCol=0xFFFF; // white
    sprintf(midText,"VSynch(%s) Smoothing(%s) Interpolate UV(%s)\n",
         SynchScreen?"ON":"OFF",BlurDisplay?"ON":"OFF",
         InterpolateUV?"ON":"OFF" );
-   OutText16Mode("\n", AJ_MID);
+   //OutText16Mode("\n", AJ_MID);
    OutText16Mode(midText, AJ_MID);
    sprintf(midText,"Frame dropping(%s) Fit Screen(%s)\n",
      DropFrames?"ON":"OFF", FitVideo?"ON":"OFF" );
    OutText16Mode(midText, AJ_MID);
+   OutText16ModeFormat(AJ_MID, midText, 255, "Audio %s%s%s\n",
+        (AudioEnabled)?"ON":"OFF",
+        (AudioEnabled)?": ":"",
+        (AudioEnabled)?SndDrv->CardName:"");
+    if (AudioEnabled) {
+        OutText16ModeFormat(AJ_MID, midText, 255, "%sbits | %s | %iHz\n",
+            (Audio16Bits) ? "16":"8",
+            (AudioStereo) ? "STEREO":"MONO",
+            AudioSamplingSpeed);
+        if (AboutDebugInfo && pCodecAudioParam != NULL) {
+            //char errV[256] = "";
+            //av_strerror(audioFrameSamples, errV, 255);
+            OutText16ModeFormat(AJ_MID, midText, 255, "pos %i fs %i af %i,channels %i,rate %i,f \n count %i start %i end %i queued %i add %i\n", curVoicePos, audioFrameSamples,
+                pAudioCodecCtx->frame_size, pAudioCodecCtx->channels, pAudioCodecCtx->sample_rate, audioRingCount, audioRingStart, audioRingEnd, countRingQueued, countRingAdd);
+        }
+    }
 
 }
 
@@ -905,10 +1018,14 @@ void LoadConfig()
 {
     char infoName[256]="";
     DFileBuffer *fileBuffer = CreateDFileBuffer(0);
-
+    float tempFloat = 0.0f;
+    int tempInt = 0;
+    int vwidth = 0, vheight = 0, vbpp = 0, vrefreshRate = 0;
     DSplitString *ListInfoLine = CreateDSplitString(0, 0);
+    DSplitString *ListInfoIndexCmnt = CreateDSplitString(0, 0);
     DSplitString *ListInfoIndex = CreateDSplitString(0, 0);
-    if (fileBuffer == NULL || ListInfoLine == NULL || ListInfoIndex == NULL) {
+    bool videoModeFound = false;
+    if (fileBuffer == NULL || ListInfoLine == NULL || ListInfoIndexCmnt == NULL || ListInfoIndex == NULL) {
         return;
     }
     if (!OpenFileDFileBuffer(fileBuffer, "DUGLPLAY.CFG", "rt"))
@@ -941,48 +1058,104 @@ void LoadConfig()
 		    strncpy(infoName, &ListInfoLine->ListStrings[0][1], lenInfo-2);
 		    infoName[lenInfo-2] = '\0';
 		    // search for informations
-            if ((ListInfoIndex->globLen = GetLineDFileBuffer(fileBuffer, ListInfoIndex->globStr, ListInfoIndex->maxGlobLength)) == 0 && IsEndOfFileDFileBuffer(fileBuffer)) break;
-            TrimGlobStringDSplitString(ListInfoIndex);
-            if (ListInfoIndex->globStr[0] == '\0' || ListInfoIndex->globStr[0] == ';')
-                break;
-            if (splitDSplitString(ListInfoIndex, NULL, ',', false) > 0) {
-                TrimStringsDSplitString(ListInfoIndex);
+            if ((ListInfoIndexCmnt->globLen = GetLineDFileBuffer(fileBuffer, ListInfoIndexCmnt->globStr, ListInfoIndexCmnt->maxGlobLength)) == 0 && IsEndOfFileDFileBuffer(fileBuffer)) break;
+            TrimGlobStringDSplitString(ListInfoIndexCmnt);
+            // remove any middle comment
+            if (splitDSplitString(ListInfoIndexCmnt, NULL, ';', true) > 0) {
+                TrimStringsDSplitString(ListInfoIndexCmnt);
+                // empty ? ignore
+                if (ListInfoIndexCmnt->ListStrings[0][0] == '\0')
+                    break;
+                if (splitDSplitString(ListInfoIndex, ListInfoIndexCmnt->ListStrings[0], ',', true) > 0) {
+                    TrimStringsDSplitString(ListInfoIndex);
 
-                if(strcmp(infoName,"VideoMode") == 0 && ListInfoIndex->countStrings >= 2) {
-                  screenX = atoi(ListInfoIndex->ListStrings[0]);
-                  screenY = atoi(ListInfoIndex->ListStrings[1]);
-                }
-                else if(strcmp(infoName,"KeyboardMap") == 0  && ListInfoIndex->countStrings >= 1) {
-                  if (IsFileExist(ListInfoIndex->ListStrings[0])) {
-                    strcpy(keybMapFileName, ListInfoIndex->ListStrings[0]);
-                  }
-                }
-                else if(strcmp(infoName,"MousePosition") == 0  && ListInfoIndex->countStrings >= 2) {
-                  DefMsPosX = atof(ListInfoIndex->ListStrings[0]);
-                  if(DefMsPosX<0.0 || DefMsPosX>1.0) DefMsPosX = 0.5;
-                  DefMsPosY = atof(ListInfoIndex->ListStrings[1]);
-                  if(DefMsPosY<0.0 || DefMsPosY>1.0) DefMsPosY = 0.5;
-                }
-                else if(strcmp(infoName,"VerticalSynch") == 0  && ListInfoIndex->countStrings >= 1) {
-                  SynchScreen = (bool)(atoi(ListInfoIndex->ListStrings[0]));
-                }
-                else if(strcmp(infoName,"DropFrames") == 0  && ListInfoIndex->countStrings >= 1) {
-                  DropFrames = (bool)(atoi(ListInfoIndex->ListStrings[0]));
-                }
-                else if(strcmp(infoName,"InterpolateUV") == 0  && ListInfoIndex->countStrings >= 1) {
-                  InterpolateUV = (bool)(atoi(ListInfoIndex->ListStrings[0]));
-                }
-                else if(strcmp(infoName,"FitScreen") == 0  && ListInfoIndex->countStrings >= 1) {
-                  FitVideo = (bool)(atoi(ListInfoIndex->ListStrings[0]));
-                }
-                else if(strcmp(infoName,"FullScrSmooth") == 0  && ListInfoIndex->countStrings >= 1) {
-                  BlurDisplay = (bool)(atoi(ListInfoIndex->ListStrings[0]));
-                }
-                else if(strcmp(infoName,"FullScrShowTime") == 0  && ListInfoIndex->countStrings >= 1) {
-                  FullScrShowTime = (bool)(atoi(ListInfoIndex->ListStrings[0]));
-                }
-                else if(strcmp(infoName,"FullScrShowFps") == 0  && ListInfoIndex->countStrings >= 1) {
-                  FullScrShowFps = (bool)(atoi(ListInfoIndex->ListStrings[0]));
+                    if(strcmp(infoName,"VideoMode") == 0 && ListInfoIndex->countStrings >= 2) {
+                      screenX = atoi(ListInfoIndex->ListStrings[0]);
+                      screenY = atoi(ListInfoIndex->ListStrings[1]);
+
+                      DgGetFirstDisplayMode(&vwidth, &vheight, &vbpp, &vrefreshRate);
+                      videoModeFound = (vwidth == screenX && vheight == screenY && vbpp == 16);
+                      while (!videoModeFound && DgGetNextDisplayMode(&vwidth, &vheight, &vbpp, &vrefreshRate)) {
+                        videoModeFound = (vwidth == screenX && vheight == screenY && vbpp == 16);
+                      }
+                      // video mode not found, switch to default 640x480
+                      if (!videoModeFound) {
+                        screenX = 640;
+                        screenY = 480;
+                      }
+                    }
+                    else if(strcmp(infoName,"KeyboardMap") == 0  && ListInfoIndex->countStrings >= 1) {
+                      if (IsFileExist(ListInfoIndex->ListStrings[0])) {
+                        strcpy(keybMapFileName, ListInfoIndex->ListStrings[0]);
+                      }
+                    }
+                    else if(strcmp(infoName,"MousePosition") == 0  && ListInfoIndex->countStrings >= 2) {
+                      DefMsPosX = atof(ListInfoIndex->ListStrings[0]);
+                      if(DefMsPosX<0.0 || DefMsPosX>1.0) DefMsPosX = 0.5;
+                      DefMsPosY = atof(ListInfoIndex->ListStrings[1]);
+                      if(DefMsPosY<0.0 || DefMsPosY>1.0) DefMsPosY = 0.5;
+                    }
+                    else if(strcmp(infoName,"VerticalSynch") == 0  && ListInfoIndex->countStrings >= 1) {
+                      SynchScreen = StringToBool(ListInfoIndex->ListStrings[0]);
+                    }
+                    else if(strcmp(infoName,"DropFrames") == 0  && ListInfoIndex->countStrings >= 1) {
+                      DropFrames = StringToBool(ListInfoIndex->ListStrings[0]);
+                    }
+                    else if(strcmp(infoName,"InterpolateUV") == 0  && ListInfoIndex->countStrings >= 1) {
+                      InterpolateUV = StringToBool(ListInfoIndex->ListStrings[0]);
+                    }
+                    else if(strcmp(infoName,"FitScreen") == 0  && ListInfoIndex->countStrings >= 1) {
+                      FitVideo = StringToBool(ListInfoIndex->ListStrings[0]);
+                    }
+                    else if(strcmp(infoName,"FullScrSmooth") == 0  && ListInfoIndex->countStrings >= 1) {
+                      BlurDisplay = StringToBool(ListInfoIndex->ListStrings[0]);
+                    }
+                    else if(strcmp(infoName,"FullScrShowTime") == 0  && ListInfoIndex->countStrings >= 1) {
+                      FullScrShowTime = StringToBool(ListInfoIndex->ListStrings[0]);
+                    }
+                    else if(strcmp(infoName,"FullScrShowFps") == 0  && ListInfoIndex->countStrings >= 1) {
+                      FullScrShowFps = StringToBool(ListInfoIndex->ListStrings[0]);
+                    }
+                    else if(strcmp(infoName,"EnableSound") == 0  && ListInfoIndex->countStrings >= 1) {
+                      SoundEnabled = StringToBool(ListInfoIndex->ListStrings[0]);
+                    }
+                    else if(strcmp(infoName,"SoundDriver") == 0  && ListInfoIndex->countStrings >= 1) {
+                      if (IsFileExist(ListInfoIndex->ListStrings[0])) {
+                        strcpy(soundDriverFileName, ListInfoIndex->ListStrings[0]);
+                      }
+                    }
+                    else if(strcmp(infoName,"SoundSampling") == 0  && ListInfoIndex->countStrings >= 1) {
+                      tempInt = atoi(ListInfoIndex->ListStrings[0]);
+                      if (tempInt >= 8000 && tempInt <= 44100)
+                        AudioSamplingSpeed = tempInt;
+                    }
+                    else if(strcmp(infoName,"VoiceSampleSize") == 0  && ListInfoIndex->countStrings >= 1) {
+                      VoiceSampleSize = atoi(ListInfoIndex->ListStrings[0]);
+                    }
+                    else if(strcmp(infoName,"SoundStereo") == 0  && ListInfoIndex->countStrings >= 1) {
+                      AudioStereo = StringToBool(ListInfoIndex->ListStrings[0]);
+                    }
+                    else if(strcmp(infoName,"Sound16Bits") == 0  && ListInfoIndex->countStrings >= 1) {
+                      Audio16Bits = StringToBool(ListInfoIndex->ListStrings[0]);
+                    }
+                    else if(strcmp(infoName,"MasterSoundVolume") == 0  && ListInfoIndex->countStrings >= 1) {
+                      tempFloat = atof(ListInfoIndex->ListStrings[0]);
+                      if (tempFloat >= 0.0f && tempFloat <= 1.0f)
+                        MasterAudioVolume = (int)(255.0f * tempFloat);
+                    }
+                    else if(strcmp(infoName,"VoiceSoundVolume") == 0  && ListInfoIndex->countStrings >= 1) {
+                      tempFloat = atof(ListInfoIndex->ListStrings[0]);
+                      if (tempFloat >= 0.0f && tempFloat <= 1.0f)
+                        VoiceAudioVolume = (int)(255.0f * tempFloat);
+                    }
+                    else if(strcmp(infoName,"OutputGain") == 0  && ListInfoIndex->countStrings >= 1) {
+                      tempFloat = atof(ListInfoIndex->ListStrings[0]);
+                      if (tempFloat >= 0.0f && tempFloat <= 1.0f)
+                        OutGainAudioVolume = (int)(255.0f * tempFloat);
+                    }
+                    else if(strcmp(infoName,"AboutDebugInfo") == 0  && ListInfoIndex->countStrings >= 1) {
+                      AboutDebugInfo = StringToBool(ListInfoIndex->ListStrings[0]);
+                    }
                 }
             }
 		}
@@ -990,6 +1163,7 @@ void LoadConfig()
 	CloseFileDFileBuffer(fileBuffer);
 	DestroyDFileBuffer(fileBuffer);
 	DestroyDSplitString(ListInfoLine);
+	DestroyDSplitString(ListInfoIndexCmnt);
 	DestroyDSplitString(ListInfoIndex);
 }
 
@@ -1026,6 +1200,12 @@ int OpenVid(char *FileName)
       redrawVid = 1;
       FrameAvlbl = true;
       framenum = true;
+      audioRingStart = 0;
+      audioRingEnd = 0;
+      audioRingCount = 0;
+      curVoicePos = 0;
+      countRingQueued = 0;
+      countRingAdd = 0;
     }
 
     MWDPlayer->Label = sFinalLabel;
@@ -1074,6 +1254,8 @@ void DestroyFFMPEG(); // internal cleanup
 int OpenVidFFMPEG(char *FileName) {
     int retfunc = 0;
 
+	av_log_set_level(AV_LOG_QUIET);
+
 	// Open media file.
 	if (avformat_open_input(&pFormatCtx, FileName, NULL, NULL) != 0) {
         DestroyFFMPEG();
@@ -1084,8 +1266,7 @@ int OpenVidFFMPEG(char *FileName) {
         DestroyFFMPEG();
 		return 2;
 	}
-
-    videoStreamIndex = av_find_best_stream(pFormatCtx, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);;
+    videoStreamIndex = av_find_best_stream(pFormatCtx, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
     VideoTime = (float)(pFormatCtx->duration)/AV_TIME_BASE;
     if (VideoTime < 0.0f)
         VideoTime = 0.0f;
@@ -1135,6 +1316,7 @@ int OpenVidFFMPEG(char *FileName) {
     av_dump_format(pFormatCtx, 0, FileName, 0);
     /* allocate frame */
     videoFrame = av_frame_alloc();
+    audioFrame = av_frame_alloc();
     if (!videoFrame) {
         DestroyFFMPEG();
         return 8;
@@ -1150,6 +1332,11 @@ int OpenVidFFMPEG(char *FileName) {
     // get frames per second
     VideoFps = (float)av_q2d(video_stream->r_frame_rate);
     // init parser
+    if(pAudioCodecParser == NULL) {
+        audioFrameSamples = 555;
+        audioStreamIndex = -1;
+    }
+
     pVideoCodecParser = av_parser_init(pVideoCodec->id);
     if(pVideoCodecParser == NULL) {
         DestroyFFMPEG();
@@ -1166,6 +1353,58 @@ int OpenVidFFMPEG(char *FileName) {
         return 11; //"Could not allocate raw video buffer\n"
     }
     video_dst_bufsize = retfunc;
+    if (AudioEnabled) {
+        // handle optional audio stream
+        audioStreamIndex = av_find_best_stream(pFormatCtx, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
+        if (audioStreamIndex >= 0) {
+            av_dump_format(pFormatCtx, audioStreamIndex, NULL, false);
+            // Find the decoder for the video stream
+            pAudioCodec = avcodec_find_decoder(pFormatCtx->streams[audioStreamIndex]->codecpar->codec_id);
+            if (pAudioCodec != NULL) {
+                pAudioCodecCtx = avcodec_alloc_context3(pAudioCodec);
+                pCodecAudioParam = pFormatCtx->streams[audioStreamIndex]->codecpar;
+                audio_stream = pFormatCtx->streams[audioStreamIndex];
+                /* Copy codec parameters from input stream to output codec context */
+                if (avcodec_parameters_to_context(pAudioCodecCtx, audio_stream->codecpar) < 0) {
+                    audioStreamIndex = -1;
+                    audioFrameSamples = 444;
+                }
+                if (audioStreamIndex != -1) {
+                    //av_dict_set(pAudioCodecCtx->priv_data, "packet_size", "256", 0);
+                    //pAudioCodecCtx->request_sample_fmt = AV_SAMPLE_FMT_S16;
+                    if (avcodec_open2(pAudioCodecCtx, pAudioCodec, NULL) < 0) {
+                        audioStreamIndex = -1;
+                        audioFrameSamples = 111;
+                    } else {
+                        pAudioCodecParser = av_parser_init(pAudioCodec->id);
+
+                        int dst_linesize = 0;
+                        uint64_t iInputLayout                    = av_get_default_channel_layout(pAudioCodecCtx->channels);
+                        enum AVSampleFormat eInputSampleFormat   = (AVSampleFormat)pAudioCodecCtx->sample_fmt;
+                        int         iInputSampleRate             = pAudioCodecCtx->sample_rate;
+
+                        uint64_t iOutputLayout                   = (AudioStereo) ? AV_CH_LAYOUT_STEREO : AV_CH_LAYOUT_MONO;
+                        enum AVSampleFormat eOutputSampleFormat  = (Audio16Bits) ? AV_SAMPLE_FMT_S16 : AV_SAMPLE_FMT_U8;
+                        int         iOutputSampleRate            = pAudioCodecCtx->sample_rate;
+
+                        au_convert_ctx= swr_alloc_set_opts(NULL,iOutputLayout, eOutputSampleFormat, iOutputSampleRate,
+                            iInputLayout,eInputSampleFormat, iInputSampleRate, 0, NULL);
+
+                        UpdateAudioRingDVoicesSamplingSpeed(pAudioCodecCtx->sample_rate);
+
+                        swr_init(au_convert_ctx);
+                        audioFrameSamples = 333;
+                        SndDrv->ContinueSound();
+                    }
+                }
+
+            } else {
+                audioFrameSamples = 222;
+                audioStreamIndex = -1;
+            }
+        }
+    }
+
     if (CreateSurf(&Sframe16, videoWidth, videoHeight, 16)==0) {
         DestroyFFMPEG();
         return 12; // no mem
@@ -1217,6 +1456,7 @@ int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop) {
     while (nDrops > 0) {
         while (nDrops >0 && !frameFound && (ret_av = av_read_frame(pFormatCtx, pkt)) >= 0 ) {
 
+            audioFrameSamples = pkt->stream_index;
             if (pkt->stream_index == videoStreamIndex) {
 
                 if ((retfunc = avcodec_send_packet(pVideoCodecCtx, pkt)) < 0) {
@@ -1229,6 +1469,23 @@ int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop) {
                     return 0; // no frame
                 }
                 frameFound = true;
+            } else if (AudioEnabled && pkt->stream_index == audioStreamIndex) {
+                audioFrameSamples = 0; //audioFrame->nb_samples;
+
+                if ((retfunc = avcodec_send_packet(pAudioCodecCtx, pkt)) == 0) {
+                    if (AudioEnabled) {
+                        if (avcodec_receive_frame(pAudioCodecCtx, audioFrame) == 0) {
+                            //int outframes = swr_convert(au_convert_ctx, (uint8_t **)&audioRing[audioRingStart]->Ptr, pCodecAudioParam->frame_size, (const uint8_t **) audioFrame->data, audioFrame->nb_samples);
+                            //SndDrv->AddVoice(audioRing[audioRingStart], 0, 0, NULL, 0);
+                            //audioRingStart = (audioRingStart+1)%AUDIO_RING_SIZE;
+
+                            av_frame_unref(audioFrame);
+                        }
+                    }
+                    av_packet_unref(pkt);
+                    //av_samples_get_buffer_size()
+                }
+
             } else {
                 av_packet_unref(pkt);
             }
@@ -1249,11 +1506,12 @@ int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop) {
     // available frame ?
     pVideoCodecCtx->skip_frame = AVDISCARD_DEFAULT;
     while (1) {
-        while (!frameFound && (ret_av = av_read_frame(pFormatCtx, pkt)) >= 0 ) {
+        while (!frameFound && (ret_av = av_read_frame(pFormatCtx, pkt)) >= 0) {
             // submit the packet to the decoder
             // check if the packet belongs to a stream we are interested in, otherwise
             // skip it
             if (pkt->stream_index == videoStreamIndex) {
+
                 if ((retfunc = avcodec_send_packet(pVideoCodecCtx, pkt)) < 0) {
                     av_packet_unref(pkt);
                     if (retfunc == AVERROR(EAGAIN))
@@ -1264,7 +1522,55 @@ int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop) {
                 // submit the packet to the decoder
                 // new Video found it should contain a frame
                 frameFound = true;
+                av_packet_unref(pkt);
+            } else if (AudioEnabled &&  pkt->stream_index == audioStreamIndex) {
+                avcodec_send_packet(pAudioCodecCtx, pkt);
+                while (avcodec_receive_frame(pAudioCodecCtx, audioFrame) == 0) {
+                    static int typeToSampleSize[] = { 1, 2, 2, 4 };
+                    int curVoiceOneSample = typeToSampleSize[audioRing[audioRingEnd]->Type];
+
+                    uint8_t *PtrDstVoice =(uint8_t *) audioRing[audioRingEnd]->Ptr;
+                    uint8_t *pDstVoiceData[1] = { (uint8_t *)&PtrDstVoice[curVoicePos] };
+                    int outframes = swr_convert(au_convert_ctx,
+                                                    pDstVoiceData,
+                                                    VoiceSampleSize-curVoicePos/curVoiceOneSample,
+                                                    (const uint8_t **) audioFrame->data,
+                                                    (VoiceSampleSize-(curVoicePos/curVoiceOneSample) > audioFrame->nb_samples) ? audioFrame->nb_samples: (VoiceSampleSize-curVoicePos/curVoiceOneSample));
+                    if (curVoicePos/curVoiceOneSample + outframes /*audioFrame->nb_samples*/ >= VoiceSampleSize) {
+                        if (audioRingCount == 0) {
+                            audioRingStart = audioRingEnd;
+                            audioRingEnd = (audioRingEnd+1)%AUDIO_RING_SIZE;
+                            audioRingCount = 1;
+                        } else {
+                            if (audioRingCount<AUDIO_RING_SIZE) {
+                                audioRingCount++;
+                                audioRingEnd = (audioRingEnd+1)%AUDIO_RING_SIZE;
+                            } else { // overlapped increase both start and end
+                                audioRingStart = (audioRingStart+1)%AUDIO_RING_SIZE;
+                                audioRingEnd = (audioRingEnd+1)%AUDIO_RING_SIZE;
+                            }
+                        }
+                        curVoicePos = (curVoicePos/curVoiceOneSample + outframes - VoiceSampleSize) * curVoiceOneSample;
+                        // last chunk ?
+                        if (curVoicePos > 0) {
+                            uint8_t *pLastDstVoiceData[1] = { (uint8_t *)audioRing[audioRingEnd]->Ptr };
+                            outframes = swr_convert(au_convert_ctx,
+                                        pLastDstVoiceData,
+                                        VoiceSampleSize,
+                                        (const uint8_t **) audioFrame->data,
+                                        curVoicePos/curVoiceOneSample);
+                            curVoicePos = outframes*curVoiceOneSample;
+                        }
+                    } else {
+                        curVoicePos += outframes*curVoiceOneSample; //audioFrame->nb_samples;
+                    }
+
+                    av_frame_unref(audioFrame);
+                }
+
+                av_packet_unref(pkt);
             } else {
+                //audioFrameSamples = 666;
                 av_packet_unref(pkt);
             }
         }
@@ -1365,7 +1671,7 @@ int SeekFrameFFMPEG(DgSurf *S16, unsigned int FrameNum) {
     int64_t target_pts = (int64_t)(FrameNum * (1.0 / av_q2d(video_stream->avg_frame_rate)) / av_q2d(video_stream->time_base));
     av_seek_frame(pFormatCtx, videoStreamIndex, target_pts, AVSEEK_FLAG_BACKWARD);
     avcodec_flush_buffers(pVideoCodecCtx);
-    return GetNextFrameFFMPEG(Sframe16,0);
+    return GetNextFrameFFMPEG(S16,0);
 }
 
 // destroy/free as much as possible ffmpeg allocated mem/ressources
@@ -1381,7 +1687,6 @@ void DestroyFFMPEG() {
         avformat_close_input(&pFormatCtx);
         pFormatCtx = NULL;
     }
-
     if (pVideoCodecParser) {
         av_parser_close(pVideoCodecParser);
         pVideoCodecParser = NULL;
@@ -1389,6 +1694,21 @@ void DestroyFFMPEG() {
     if (videoFrame) {
         av_frame_free(&videoFrame);
         videoFrame = NULL;
+    }
+
+    if (pAudioCodecCtx) {
+        avcodec_send_packet(pAudioCodecCtx, NULL);
+        avcodec_free_context(&pAudioCodecCtx);
+        pAudioCodecCtx = NULL;
+    }
+
+    if (audioFrame) {
+        av_frame_free(&audioFrame);
+        audioFrame = NULL;
+    }
+    if (au_convert_ctx != NULL) {
+        swr_free(&au_convert_ctx);
+        au_convert_ctx = NULL;
     }
     if (pkt) {
         av_packet_free(&pkt);
@@ -1402,6 +1722,7 @@ void DestroyFFMPEG() {
         Sframe16 = NULL;
     }
     videoStreamIndex = -1;
+    audioStreamIndex = -1;
     videoFramesCount = 0;
 }
 
@@ -1532,4 +1853,149 @@ void YUV2RGB_F444(DgSurf *S, SYUVData *pYUVDATA) {
 }
 
 
+// AUDIO handling //////////////////////////////////////////////////
+
+
+// load sound driver, init/detect sound card, reset audioRing buffer
+bool InitSound(bool bits16, bool stereo, int sampleSpeed) {
+    int iniSoundRes = false;
+
+    if (!SoundEnabled || AudioEnabled)
+        return false;
+    AudioEnabled = false;
+    memset(audioRing, 0, sizeof(audioRing));
+    audioRingStart = 0;
+    audioRingEnd = 0;
+    audioRingCount = 0;
+
+    // load the sound driver
+    if (!LoadSoundDRV(&SndDrv,soundDriverFileName)) {
+        return false; // load driver error
+    }
+    // alloc the memory buffer needed by the sound driver
+	if ((SndBuff=malloc(SndDrv->SizeBuff))==NULL) {
+        DestroySoundDRV(SndDrv);
+        return false; // no mem
+    }
+    // try to install the sound driver -1 means AUTODETECT
+	if (!SndDrv->InstallDriver(SndBuff,-1,5,1,-1)) {
+        DestroySoundDRV(SndDrv);
+        free(SndBuff);
+        return false; // failure to detect sound card
+	}
+	// init sound output
+    if (bits16)
+        iniSoundRes = SndDrv->InitSound(DS_NOSOUND, DS_OUT16BIT, stereo, sampleSpeed);
+    else // 8 bits
+        iniSoundRes = SndDrv->InitSound(DS_OUT8BIT, DS_NOSOUND, stereo, sampleSpeed);
+
+    if (!iniSoundRes) {
+        DestroySoundDRV(SndDrv);
+        free(SndBuff);
+        return false; // failure to detect sound card
+	}
+
+    SndDrv->SetMasterVolume(MasterAudioVolume,MasterAudioVolume);
+    SndDrv->SetVoiceVolume(VoiceAudioVolume,VoiceAudioVolume);
+    SndDrv->SetOutGain(OutGainAudioVolume,OutGainAudioVolume);
+    AudioEnabled = true;
+    CreatePrepAudioRingDVoices();
+
+    return true;
+}
+
+// uninstall sound driver, free/reset audio ring buffer
+void CloseSound() {
+    if (AudioEnabled) {
+        SndDrv->StopSound();
+        SndDrv->UninstallDriver();
+        DestroyUnprepAudioRingDVoices();
+        DestroySoundDRV(SndDrv);
+        SndDrv = NULL;
+        free(SndBuff);
+        AudioEnabled = false;
+    }
+}
+
+int AddVoice(DVoice *Vc,int State, bool updateSpeed)
+{
+    // adjust the speed of the voice if it's speed is inequal with
+    // the current sampling speed
+    if (updateSpeed && SndDrv->Cur_SampSpeed!=Vc->Freq) {
+        VP.Speed=(128*Vc->Freq)/SndDrv->Cur_SampSpeed;
+        return SndDrv->AddVoice(Vc,DS_EFF_CHG_SPEED,State,&VP,0);
+	} else // else add as it*/
+        return SndDrv->AddVoice(Vc,0,State,NULL,0);
+}
+
+int QueueVoice(DVoice *toQueueVc,DVoice *Vc,int State, bool updateSpeed)
+{
+    // adjust the speed of the voice if it's speed is inequal with
+    // the current sampling speed
+    if (updateSpeed && SndDrv->Cur_SampSpeed!=Vc->Freq) {
+        VP.Speed=(128*Vc->Freq)/SndDrv->Cur_SampSpeed;
+        return SndDrv->QueueVoice(toQueueVc,Vc,DS_EFF_CHG_SPEED,State,&VP,0);
+	} else // else add as it*/
+        return SndDrv->QueueVoice(toQueueVc,Vc,0,State,NULL,0);
+}
+
+// Create/Prepare Audio Ring DVoices
+bool CreatePrepAudioRingDVoices() {
+    int resCreate = 0;
+    int i=0;
+
+    audioRingStart = 0;
+    audioRingEnd = 0;
+    audioRingCount = 0;
+    if (!AudioEnabled)
+        return false;
+    for (i=0; i < AUDIO_RING_SIZE; i++) {
+        resCreate = CreateDVoice(&audioRing[i], Audio16Bits, AudioStereo, AudioSamplingSpeed/*pAudioCodecCtx->sample_rate*/, VoiceSampleSize);
+        if (!resCreate)
+            break;
+    }
+    if (!resCreate) {
+        for (i=0; i < AUDIO_RING_SIZE; i++) {
+            if (audioRing[i] != NULL)
+                DestroyDVoice(audioRing[i]);
+        }
+        return false;
+    }
+    for (i=0; i < AUDIO_RING_SIZE; i++) {
+        SndDrv->PrepareVoice(audioRing[i]);
+    }
+
+    return true;
+}
+
+// update sampling speed of AudioRingDVoice
+void UpdateAudioRingDVoicesSamplingSpeed(int newSampling) {
+    if (AudioEnabled && newSampling>4000) {
+        for (int i=0; i < AUDIO_RING_SIZE; i++) {
+            if (audioRing[i] != NULL)
+                audioRing[i]->Freq = newSampling;
+        }
+    }
+}
+
+// Destroy/Unprepare Audio Ring DVoices
+bool DestroyUnprepAudioRingDVoices() {
+    int i=0;
+
+    if (!AudioEnabled)
+        return false;
+    SndDrv->DeleteAllVoices();
+    for (i=0; i < AUDIO_RING_SIZE; i++) {
+        if (audioRing[i] != NULL) {
+            SndDrv->UnprepareVoice(audioRing[i]);
+            DestroyDVoice(audioRing[i]);
+            audioRing[i] = NULL;
+        }
+    }
+    audioRingStart = 0;
+    audioRingEnd = 0;
+    audioRingCount = 0;
+
+    return true;
+}
 
