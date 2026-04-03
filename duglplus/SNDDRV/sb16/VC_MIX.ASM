@@ -475,7 +475,8 @@ VoiceEff8BM:
 		MOV			EDX,EBX
 		MOV			ECX,[EDI+Voice.Type]
 		MOV			EAX,[EDX+ECX*4+BuffVc_SpeedBuffVc]
-		XOR			EBP,EBP
+		MOV			EBP,[EDI+Voice.RestCoeff]
+		;XOR			EBP,EBP
 		MOV			ESI,[EDI+Voice.Ptr] ; Pos = 0
 		MOV			EBX,[EDI+Voice.Size]
 		ADD			EBX,[EDI+Voice.Ptr]
@@ -488,17 +489,17 @@ VoiceEff8BM:
 		CALL		EAX
 		POP			EAX
 
+		SUB			ESI,[EAX+Voice.Ptr]
+		MOV			[EAX+Voice.Pos],ESI
+		MOV			[EAX+Voice.RestCoeff],EBP
 
 		; test again looping as this could be a new queued Voice not looping
-		TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
-		JZ			.FinVcEff ; bypass queued check as this happen only for new Queued voice
+		;TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
+		;JZ			.FinVcEff ; bypass queued check as this happen only for new Queued voice
 
 		OR			ECX,ECX
 		JNZ			.VcInBcle
 
-		SUB			ESI,[EAX+Voice.Ptr]
-		MOV			[EAX+Voice.Pos],ESI
-		MOV			[EAX+Voice.RestCoeff],EBP
 
 		JMP			SHORT .PasFinVoice1
 .VcPasInBcle:
@@ -520,14 +521,14 @@ VoiceEff8BM:
 .VcPasQueued:
 		JECXZ		.FinVcEff
 
-		MOV			EBP,ECX
+		MOV			EDX,ESI ; save voices Ptr in EDX
 		CALL		GetBaseAddress
 		MOV			EDI,[EBX+BuffCalc8Bit]	; Ajout Des Voix ----
 		MOV			ESI,[EBX+TempVcCopyBuff]
-		MOV			ECX,[EAX+Voice.Type]
-		MOV			EAX,[EBX+ECX*4+AddrAdd_BCalc8BitM]
-		MOV			ECX,SizeDMABuff/2
-		SUB			ECX,EBP
+		MOV			EAX,[EAX+Voice.Type]
+		NEG			ECX
+		MOV			EAX,[EBX+EAX*4+AddrAdd_BCalc8BitM]
+		ADD			ECX,SizeDMABuff/2
 		CALL		EAX
 
 		XOR			EBX,EBX
@@ -999,7 +1000,8 @@ VoiceEff8BS:
 		MOV			EDX,EBX
 		MOV			ECX,[EDI+Voice.Type]
 		MOV			EAX,[EDX+ECX*4+BuffVc_SpeedBuffVc]
-		XOR			EBP,EBP
+		MOV			EBP,[EDI+Voice.RestCoeff]
+		;XOR			EBP,EBP
 		MOV			ESI,[EDI+Voice.Ptr] ; Pos = 0
 		MOV			EBX,[EDI+Voice.Size]
 		ADD			EBX,[EDI+Voice.Ptr]
@@ -1011,16 +1013,17 @@ VoiceEff8BS:
 		CALL		EAX
 		POP			EAX
 
+		SUB			ESI,[EAX+Voice.Ptr]
+		MOV			[EAX+Voice.Pos],ESI
+		MOV			[EAX+Voice.RestCoeff],EBP
+
 		; test again looping as this could be a new queued Voice not looping
-		TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
-		JZ			.FinVcEff ; bypass queued check as this happen only for new Queued voice
+		;TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
+		;JZ			.FinVcEff ; bypass queued check as this happen only for new Queued voice
 
 		OR			ECX,ECX
 		JNZ			.VcInBcle
 
-		SUB			ESI,[EAX+Voice.Ptr]
-		MOV			[EAX+Voice.Pos],ESI
-		MOV			[EAX+Voice.RestCoeff],EBP
 
 		JMP			SHORT .PasFinVoice1
 .VcPasInBcle:
@@ -1042,14 +1045,14 @@ VoiceEff8BS:
 .VcPasQueued:
 		JECXZ		.FinVcEff
 
-		MOV			EBP,ECX
+		MOV			EDX,ESI ; save voices Ptr in EDX
 		CALL		GetBaseAddress
 		MOV			EDI,[EBX+BuffCalc8Bit]	; Ajout Des Voix ----
 		MOV			ESI,[EBX+TempVcCopyBuff]
-		MOV			ECX,[EAX+Voice.Type]
-		MOV			EAX,[EBX+ECX*4+AddrAdd_BCalc8BitS]
-		MOV			ECX,SizeDMABuff/4
-		SUB			ECX,EBP
+		MOV			EAX,[EAX+Voice.Type]
+		NEG			ECX
+		MOV			EAX,[EBX+EAX*4+AddrAdd_BCalc8BitS]
+		ADD			ECX,SizeDMABuff/4
 		CALL		EAX
 
 
@@ -1482,8 +1485,8 @@ VoiceEff16BM:
 		MOV			EAX,[EDX+ECX*4+BuffVc_SpeedBuffVc]
 		MOV			EBP,[EDI+Voice.RestCoeff]
 		MOV			ESI,[EDI+Voice.Pos]
-		ADD			ESI,[EDI+Voice.Ptr]
 		MOV			EBX,[EDI+Voice.Size]
+		ADD			ESI,[EDI+Voice.Ptr]
 		ADD			EBX,[EDI+Voice.Ptr]
 		DEC			EBX ; Size - 1
 		MOV			ECX,SizeDMABuff/2
@@ -1501,11 +1504,12 @@ VoiceEff16BM:
 		MOV			EAX,[EDX-4]
 		OR			ECX,ECX
 		MOV			ESI,EDX ; restore ESI as VoicePtr
-		JZ			NEAR .PasFinVoice1
+		JZ			.PasFinVoice1
 		; Traitement Dernier Bloc -----------------------------------
 		TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
 		JZ			.VcPasInBcle
 		; Traitement Voix en Boucle --------
+		;MOV			DWORD [EAX+Voice.Pos], 0
 
 .VcInBcle:
 .VcMixRemainBytes:
@@ -1522,7 +1526,8 @@ VoiceEff16BM:
 		MOV			EDX,EBX
 		MOV			ECX,[EDI+Voice.Type]
 		MOV			EAX,[EDX+ECX*4+BuffVc_SpeedBuffVc]
-		XOR			EBP,EBP
+		MOV			EBP,[EDI+Voice.RestCoeff]
+		;XOR		EBP,EBP
 		MOV			ESI,[EDI+Voice.Ptr] ; Pos = 0
 		MOV			EBX,[EDI+Voice.Size]
 		ADD			EBX,[EDI+Voice.Ptr]
@@ -1535,16 +1540,16 @@ VoiceEff16BM:
 		CALL		EAX
 		POP			EAX
 
-		; test again looping as this could be a new queued Voice not looping
-		TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
-		JZ			.FinVcEff ; bypass queued check as this happen only for new Queued voice
-
-		OR			ECX,ECX
-		JNZ			.VcInBcle
-
 		SUB			ESI,[EAX+Voice.Ptr]
 		MOV			[EAX+Voice.Pos],ESI
 		MOV			[EAX+Voice.RestCoeff],EBP
+
+		; test again looping as this could be a new queued Voice not looping
+		;TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
+		;JZ			.PasFinVoice1 ; bypass queued check as this happen only for new Queued voice
+
+		OR			ECX,ECX
+		JNZ			.VcInBcle
 
 		JMP			SHORT .PasFinVoice1
 .VcPasInBcle:
@@ -1566,14 +1571,14 @@ VoiceEff16BM:
 .VcPasQueued:
 		JECXZ		.FinVcEff
 
-		MOV			EBP,ECX
+		MOV			EDX,ESI ; save voices Ptr in EDX
 		CALL		GetBaseAddress
 		MOV			EDI,[EBX+BuffCalc16Bit]	; Ajout Des Voix ----
 		MOV			ESI,[EBX+TempVcCopyBuff]
-		MOV			ECX,[EAX+Voice.Type]
-		MOV			EAX,[EBX+ECX*4+AddrAdd_BCalc16BitM]
-		MOV			ECX,SizeDMABuff/2
-		SUB			ECX,EBP
+		MOV			EAX,[EAX+Voice.Type]
+		NEG			ECX
+		MOV			EAX,[EBX+EAX*4+AddrAdd_BCalc16BitM]
+		ADD			ECX,SizeDMABuff/2
 		CALL		EAX
 
 		XOR			EBX,EBX
@@ -2042,7 +2047,8 @@ VoiceEff16BS:
 		MOV			EDX,EBX
 		MOV			ECX,[EDI+Voice.Type]
 		MOV			EAX,[EDX+ECX*4+BuffVc_SpeedBuffVc]
-		XOR			EBP,EBP
+		MOV			EBP,[EDI+Voice.RestCoeff]
+		;XOR			EBP,EBP
 		MOV			ESI,[EDI+Voice.Ptr] ; Pos = 0
 		MOV			EBX,[EDI+Voice.Size]
 		ADD			EBX,[EDI+Voice.Ptr]
@@ -2055,16 +2061,17 @@ VoiceEff16BS:
 		CALL		EAX
 		POP			EAX
 
+		SUB			ESI,[EAX+Voice.Ptr]
+		MOV			[EAX+Voice.Pos],ESI
+		MOV			[EAX+Voice.RestCoeff],EBP
+
 		; test again looping as this could be a new queued Voice not looping
-		TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
-		JZ			.FinVcEff ; bypass queued check as this happen only for new Queued voice
+		;TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
+		;JZ			.FinVcEff ; bypass queued check as this happen only for new Queued voice
 
 		OR			ECX,ECX
 		JNZ			.VcInBcle
 
-		SUB			ESI,[EAX+Voice.Ptr]
-		MOV			[EAX+Voice.Pos],ESI
-		MOV			[EAX+Voice.RestCoeff],EBP
 
 		JMP			SHORT .PasFinVoice1
 .VcPasInBcle:
@@ -2086,14 +2093,15 @@ VoiceEff16BS:
 .VcPasQueued:
 		JECXZ		.FinVcEff
 
-		MOV			EBP,ECX
 		CALL		GetBaseAddress
 		MOV			EDI,[EBX+BuffCalc16Bit]	; Ajout Des Voix ----
 		MOV			ESI,[EBX+TempVcCopyBuff]
-		MOV			ECX,[EAX+Voice.Type]
-		MOV			EAX,[EBX+ECX*4+AddrAdd_BCalc16BitS]
-		MOV			ECX,SizeDMABuff/4
-		SUB			ECX,EBP
+		MOV			EBP,[EAX+Voice.RestCoeff]
+		NEG			ECX
+		MOV			EAX,[EAX+Voice.Type]
+		MOV			EAX,[EBX+EAX*4+AddrAdd_BCalc16BitS]
+		ADD			ECX,SizeDMABuff/4 ; ECX = sizeBuff-samplesDone
+
 		CALL		EAX
 
 		XOR			EBX,EBX

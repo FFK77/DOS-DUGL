@@ -45,7 +45,7 @@ VoiceMixer:
 					DD	GetVoicePos,SetVoicePos,DeleteVoice
 					DD	DeleteAllVoices,GetCountVoices
 					DD	QueueVoice,ReplaceVoice,ExistVoice
-					DD	NS,NS,NS,NS,NS,NS,NS,NS,NS
+					DD	IsPlayingVoice,IsQueuedVoice,NS,NS,NS,NS,NS,NS,NS
 					DD	NS,NS,NS,NS,NS,NS,NS,NS
 					DD	NS,NS,NS,NS,NS,NS,NS,NS
 					DD	NS,NS,NS,NS,NS,NS,NS,NS

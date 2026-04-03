@@ -384,6 +384,7 @@ GetCountVoices:
 		MOV			ECX,[EBX+MaxNbVoice]
 		LEA			ESI,[EBX+VoicePtr]
 		XOR			EDX,EDX
+		CLI
 .BcCmptVc:
 		LODSD
 		OR			EAX,EAX
@@ -392,6 +393,7 @@ GetCountVoices:
 .VcNtActv:
 		DEC			ECX
 		JNZ			.BcCmptVc
+		STI
 		MOV			EAX,EDX
 
 		POP			EBX
@@ -399,7 +401,7 @@ GetCountVoices:
 		RET
 
 QueueVoice:
-	ARG	PtrQAddToVoice, 4, PtrQAddVoice, 4, QVcEff, 4, QVcStt, 4, QVcPckPtr, 4, QVcPos, 4
+	ARG	PtrQAddToVoice, 4, PtrQAddVoice, 4, QVcEff, 4, QVcStt, 4, QVcPckPtr, 4, QVcPos, 4, QVcReplaceExist, 4
 		PUSH		EBX
 		PUSH		ESI
 		PUSH		EDI
@@ -421,6 +423,9 @@ QueueVoice:
 		; check if no queued Voice already Exist
 		CALL		GetBaseAddress
 		LEA			ESI,[EBX+EDX*4+QueueVoicePtr]
+		; replace even if exist
+		CMP			DWORD [EBP+QVcReplaceExist], BYTE 0
+		JNE			SHORT .ProceedAddV ;
 		CMP			DWORD [ESI], BYTE 0
 		JNE			SHORT .exitErrFail  ; Voice already queued => exit, error
 		JMP			SHORT .ProceedAddV
@@ -596,6 +601,7 @@ ExistVoice:
 	ARG	PtrVoiceSearch, 4
 		PUSH		EBX
 		PUSH		ESI
+		CLI
 
 		MOV			EDX,[EBP+PtrVoiceSearch]
 		CALL		SearchVoiceIn
@@ -606,6 +612,48 @@ ExistVoice:
 		MOV			AL,1
 .NotExist:
 
+		STI
+		POP			ESI
+		POP			EBX
+	RETURN
+
+IsPlayingVoice:
+	ARG	PlayPtrVoiceSearch, 4
+		PUSH		EBX
+		PUSH		ESI
+		CLI
+
+		MOV			EDX,[EBP+PlayPtrVoiceSearch]
+		CALL		GetBaseAddress
+		MOV			ECX,[EBX+MaxNbVoice]
+		LEA			ESI,[EBX+VoicePtr]
+		JMP			SHORT IsQueuedVoice.BcCmptVc
+
+IsQueuedVoice:
+	ARG	QueuePtrVoiceSearch, 4
+		PUSH		EBX
+		PUSH		ESI
+		CLI
+
+		MOV			EDX,[EBP+QueuePtrVoiceSearch]
+		CALL		GetBaseAddress
+		MOV			ECX,[EBX+MaxNbVoice]
+		LEA			ESI,[EBX+QueueVoicePtr]
+.BcCmptVc:
+		LODSD
+		CMP			EAX,EDX
+		JE			.Exist
+		DEC			ECX
+		JNZ			.BcCmptVc
+		JMP			SHORT .NotExist
+.Exist:
+		LEA			EAX,[1]
+		JMP			SHORT .End
+.NotExist:
+		XOR 		EAX,EAX
+.End:
+
+		STI
 		POP			ESI
 		POP			EBX
 	RETURN
@@ -619,7 +667,7 @@ SearchVoiceIn:
 		PUSH		EBX
 
 		CALL		GetBaseAddress
-		XOR			EAX,EAX ; init not found
+		XOR			EAX,EAX ; init found
 		OR			EDX,EDX
 		MOV			ECX,MAX_VOICES
 		JZ			SHORT .Error ; check if null pointer
