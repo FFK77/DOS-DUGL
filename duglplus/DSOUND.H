@@ -110,13 +110,18 @@ unsigned int Signature,		//   ==	"FSDR"
 	// return current count of all Voices including stopped ones
 	int  (*GetCountVoices)();
 	// return 1 if Vc has been successfully queued to toVoice, set Vc to NULL to just delete the queue
-	int  (*QueueVoice)(DVoice *toVoice, DVoice *Vc,int VcEffect,int VcState,DVoicePack *VcP, unsigned int Pos);
+	int  (*QueueVoice)(DVoice *toVoice, DVoice *Vc,int VcEffect,int VcState,DVoicePack *VcP, unsigned int Pos, bool replaceExisting);
 	// return 1 if toVoice has been replace by Vc, if successfull delete also any queued DVoice, set Vc to NULL to just delete
 	int  (*ReplaceVoice)(DVoice *toVoice, DVoice *Vc,int VcEffect,int VcState,DVoicePack *VcP, unsigned int Pos);
 	// return true if Voice already exist, even if state stopped or Queued
 	bool (*ExistVoice)(DVoice *Vc);
+	// return true if Voice playing even if state stopped
+	bool (*IsPlayingVoice)(DVoice *Vc);
+	// return true if Voice queued to another voice even if state stopped
+	bool (*IsQueuedVoice)(DVoice *Vc);
 
-	int  VoiceMixer[113];
+
+	int  VoiceMixer[111];
 } SoundDRV;
 
 #ifdef __cplusplus
