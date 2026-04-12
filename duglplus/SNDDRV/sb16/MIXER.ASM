@@ -384,7 +384,7 @@ GetCountVoices:
 		MOV			ECX,[EBX+MaxNbVoice]
 		LEA			ESI,[EBX+VoicePtr]
 		XOR			EDX,EDX
-		CLI
+		;CLI
 .BcCmptVc:
 		LODSD
 		OR			EAX,EAX
@@ -393,7 +393,7 @@ GetCountVoices:
 .VcNtActv:
 		DEC			ECX
 		JNZ			.BcCmptVc
-		STI
+		;STI
 		MOV			EAX,EDX
 
 		POP			EBX
@@ -601,7 +601,7 @@ ExistVoice:
 	ARG	PtrVoiceSearch, 4
 		PUSH		EBX
 		PUSH		ESI
-		CLI
+		;CLI
 
 		MOV			EDX,[EBP+PtrVoiceSearch]
 		CALL		SearchVoiceIn
@@ -612,7 +612,7 @@ ExistVoice:
 		MOV			AL,1
 .NotExist:
 
-		STI
+		;STI
 		POP			ESI
 		POP			EBX
 	RETURN
@@ -621,7 +621,7 @@ IsPlayingVoice:
 	ARG	PlayPtrVoiceSearch, 4
 		PUSH		EBX
 		PUSH		ESI
-		CLI
+		;CLI
 
 		MOV			EDX,[EBP+PlayPtrVoiceSearch]
 		CALL		GetBaseAddress
@@ -633,7 +633,7 @@ IsQueuedVoice:
 	ARG	QueuePtrVoiceSearch, 4
 		PUSH		EBX
 		PUSH		ESI
-		CLI
+		;CLI
 
 		MOV			EDX,[EBP+QueuePtrVoiceSearch]
 		CALL		GetBaseAddress
@@ -653,7 +653,7 @@ IsQueuedVoice:
 		XOR 		EAX,EAX
 .End:
 
-		STI
+		;STI
 		POP			ESI
 		POP			EBX
 	RETURN

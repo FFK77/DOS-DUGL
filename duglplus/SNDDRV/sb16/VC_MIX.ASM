@@ -435,11 +435,11 @@ VoiceEff8BM:
 		MOV			EAX,[EDX+ECX*4+BuffVc_SpeedBuffVc]
 		MOV			EBP,[EDI+Voice.RestCoeff]
 		MOV			ESI,[EDI+Voice.Pos]
-		ADD			ESI,[EDI+Voice.Ptr]
 		MOV			EBX,[EDI+Voice.Size]
+		ADD			ESI,[EDI+Voice.Ptr]
 		ADD			EBX,[EDI+Voice.Ptr]
-		DEC			EBX ; Size - 1
 		MOV			ECX,SizeDMABuff/2
+		DEC			EBX ; Size - 1
 
 		POP			EDX
 		POP			EDI
@@ -960,8 +960,8 @@ VoiceEff8BS:
 		MOV			EAX,[EDX+ECX*4+BuffVc_SpeedBuffVc]
 		MOV			EBP,[EDI+Voice.RestCoeff]
 		MOV			ESI,[EDI+Voice.Pos]
-		ADD			ESI,[EDI+Voice.Ptr]
 		MOV			EBX,[EDI+Voice.Size]
+		ADD			ESI,[EDI+Voice.Ptr]
 		ADD			EBX,[EDI+Voice.Ptr]
 		DEC			EBX ; Size - 1
 		MOV			ECX,SizeDMABuff/4
@@ -1018,8 +1018,8 @@ VoiceEff8BS:
 		MOV			[EAX+Voice.RestCoeff],EBP
 
 		; test again looping as this could be a new queued Voice not looping
-		;TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
-		;JZ			.FinVcEff ; bypass queued check as this happen only for new Queued voice
+		TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
+		JZ			.FinVcEff ; bypass queued check as this happen only for new Queued voice
 
 		OR			ECX,ECX
 		JNZ			.VcInBcle
@@ -1488,8 +1488,8 @@ VoiceEff16BM:
 		MOV			EBX,[EDI+Voice.Size]
 		ADD			ESI,[EDI+Voice.Ptr]
 		ADD			EBX,[EDI+Voice.Ptr]
-		DEC			EBX ; Size - 1
 		MOV			ECX,SizeDMABuff/2
+		DEC			EBX ; Size - 1
 
 		POP			EDX
 		POP			EDI
@@ -1528,8 +1528,8 @@ VoiceEff16BM:
 		MOV			EAX,[EDX+ECX*4+BuffVc_SpeedBuffVc]
 		MOV			EBP,[EDI+Voice.RestCoeff]
 		;XOR		EBP,EBP
-		MOV			ESI,[EDI+Voice.Ptr] ; Pos = 0
 		MOV			EBX,[EDI+Voice.Size]
+		MOV			ESI,[EDI+Voice.Ptr] ; Pos = 0
 		ADD			EBX,[EDI+Voice.Ptr]
 		DEC			EBX ; Size - 1
 
@@ -1545,8 +1545,8 @@ VoiceEff16BM:
 		MOV			[EAX+Voice.RestCoeff],EBP
 
 		; test again looping as this could be a new queued Voice not looping
-		;TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
-		;JZ			.PasFinVoice1 ; bypass queued check as this happen only for new Queued voice
+		TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
+		JZ			.PasFinVoice1 ; bypass queued check as this happen only for new Queued voice
 
 		OR			ECX,ECX
 		JNZ			.VcInBcle
@@ -2007,11 +2007,11 @@ VoiceEff16BS:
 		MOV			EAX,[EDX+ECX*4+BuffVc_SpeedBuffVc]
 		MOV			EBP,[EDI+Voice.RestCoeff]
 		MOV			ESI,[EDI+Voice.Pos]
-		ADD			ESI,[EDI+Voice.Ptr]
 		MOV			EBX,[EDI+Voice.Size]
+		ADD			ESI,[EDI+Voice.Ptr]
 		ADD			EBX,[EDI+Voice.Ptr]
-		DEC			EBX ; Size - 1
 		MOV			ECX,SizeDMABuff/4
+		DEC			EBX ; Size - 1
 
 		POP			EDX
 		POP			EDI
@@ -2049,8 +2049,8 @@ VoiceEff16BS:
 		MOV			EAX,[EDX+ECX*4+BuffVc_SpeedBuffVc]
 		MOV			EBP,[EDI+Voice.RestCoeff]
 		;XOR			EBP,EBP
-		MOV			ESI,[EDI+Voice.Ptr] ; Pos = 0
 		MOV			EBX,[EDI+Voice.Size]
+		MOV			ESI,[EDI+Voice.Ptr] ; Pos = 0
 		ADD			EBX,[EDI+Voice.Ptr]
 		DEC			EBX ; Size - 1
 
@@ -2066,8 +2066,8 @@ VoiceEff16BS:
 		MOV			[EAX+Voice.RestCoeff],EBP
 
 		; test again looping as this could be a new queued Voice not looping
-		;TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
-		;JZ			.FinVcEff ; bypass queued check as this happen only for new Queued voice
+		TEST		[EAX+Voice.VcSTATE],DWORD VcInBoucle
+		JZ			.FinVcEff ; bypass queued check as this happen only for new Queued voice
 
 		OR			ECX,ECX
 		JNZ			.VcInBcle
@@ -2093,10 +2093,10 @@ VoiceEff16BS:
 .VcPasQueued:
 		JECXZ		.FinVcEff
 
+		MOV			EDX,ESI ; save voices Ptr in EDX
 		CALL		GetBaseAddress
 		MOV			EDI,[EBX+BuffCalc16Bit]	; Ajout Des Voix ----
 		MOV			ESI,[EBX+TempVcCopyBuff]
-		MOV			EBP,[EAX+Voice.RestCoeff]
 		NEG			ECX
 		MOV			EAX,[EAX+Voice.Type]
 		MOV			EAX,[EBX+EAX*4+AddrAdd_BCalc16BitS]
@@ -2728,9 +2728,10 @@ PrecSpeed	EQU	7
 Buff8BitM_SpeedBuff8BitM:
 		MOV		AL,[ESI]
 .BcCopy:
+		JECXZ	.Fin
 		STOSB
 		ADD		EBP,EDX
-		TEST		EBP,~((1<<PrecSpeed)-1)
+		TEST	EBP,~((1<<PrecSpeed)-1)
 		JZ		.PasChgPos
 		MOV		EAX,EBP
 		SHR		EAX,PrecSpeed
@@ -2741,7 +2742,7 @@ Buff8BitM_SpeedBuff8BitM:
 		MOV		AL,[ESI]
 .PasChgPos:
 		DEC		ECX
-		JNZ		.BcCopy
+		JMP		.BcCopy
 .Fin:
 		RET
 
@@ -2755,6 +2756,7 @@ Buff8BitM_SpeedBuff8BitM:
 Buff8BitS_SpeedBuff8BitS:
 		MOV		AX,[ESI]
 .BcCopy:
+		JECXZ	.Fin
 		STOSW
 		ADD		EBP,EDX
 		TEST	EBP,~((1<<PrecSpeed)-1)
@@ -2770,7 +2772,7 @@ Buff8BitS_SpeedBuff8BitS:
 
 .PasChgPos:
 		DEC		ECX
-		JNZ		.BcCopy
+		JMP		.BcCopy
 .Fin:
 		RET
 
@@ -2785,6 +2787,7 @@ Buff8BitS_SpeedBuff8BitS:
 Buff16BitM_SpeedBuff16BitM:
 		MOV		AX,[ESI]
 .BcCopy:
+		JECXZ	.Fin
 		STOSW
 		ADD		EBP,EDX
 		TEST	EBP,~((1<<PrecSpeed)-1)
@@ -2797,10 +2800,9 @@ Buff16BitM_SpeedBuff16BitM:
 		CMP		ESI,EBX
 		JA		.Fin
 		MOV		AX,[ESI]
-
 .PasChgPos:
 		DEC		ECX
-		JNZ		.BcCopy
+		JMP		.BcCopy
 .Fin:
 		RET
 
@@ -2815,8 +2817,7 @@ Buff16BitM_SpeedBuff16BitM:
 Buff16BitS_SpeedBuff16BitS:
 		MOV		EAX,[ESI]
 .BcCopy:
-		CMP		ESI,EBX
-		JAE		.Fin
+		JECXZ	.Fin
 		STOSD
 		ADD		EBP,EDX
 		TEST	EBP,~((1<<PrecSpeed)-1)
@@ -2826,11 +2827,12 @@ Buff16BitS_SpeedBuff16BitS:
 		SHR		EAX,PrecSpeed
 		AND		EBP,BYTE (1<<PrecSpeed)-1
 		LEA		ESI,[ESI+EAX*4]
+		CMP		ESI,EBX
+		JA		.Fin
 		MOV		EAX,[ESI]
-
 .PasChgPos:
 		DEC		ECX
-		JNZ		.BcCopy
+		JMP		.BcCopy
 .Fin:
 		RET
 
