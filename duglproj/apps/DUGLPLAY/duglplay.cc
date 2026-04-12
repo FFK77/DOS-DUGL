@@ -150,13 +150,23 @@ void YUV2RGB_F444(DgSurf *S, SYUVData *pYUVDATA);
 bool VidOpen=false,
     VidPause=false,
     VidEnded=false,
+    VidAudioEnded=false,
+    VidVideoEnded=false,
     FrameAvlbl=false,
     closeOnVidEnded=false,
     videoRotate180 = false,
     videoFlipHorizontally = false,
-    videoTransluent = false;
+    videoTransluent = false,
+    VidOpenHasVideo = false,
+    VidOpenHasAudio = false,
+    AudioEnabled = false,
+    SoundEnabled = true,
+    PlayLooping = false,
+    UseOldFFMPEGResampler = true;
+
 float VideoFps = 0.0f;
 float VideoTime = 0.0f;
+float AudioTime = 0.0f;
 unsigned int sizeVidFile = 0, readVidFileBytes = 0;
 int videoWidth = 0, videoHeight = 0;
 int videoFramesCount = 0;
@@ -188,6 +198,7 @@ AVStream *video_stream = NULL;
 int videoStreamIndex = -1;
 static enum AVPixelFormat pix_fmt;
 // Audio ######
+AVFormatContext* pAudioFormatCtx = NULL;
 int audioStreamIndex = -1;
 // FFmpeg codec for audio
 const AVCodec* pAudioCodec = NULL;
@@ -200,35 +211,40 @@ AVCodecParserContext *pAudioCodecParser = NULL;
 // audio Stream
 AVStream *audio_stream = NULL;
 // audio convert context
-struct SwrContext *au_convert_ctx;
+struct SwrContext *au_convert_ctx = NULL;
 
 static uint8_t *video_dst_data[4] = {NULL};
 static int      video_dst_linesize[4];
-static int      video_dst_bufsize;
 static AVFrame  *videoFrame = NULL;
-static AVFrame  *audioFrame = NULL;
 static AVPacket *pkt = NULL;
+static uint8_t **audio_dst_data = {NULL};
+static int      audio_dst_linesize;
+static int      max_dst_nb_samples = 0;
+static AVFrame  *audioFrame = NULL;
+static AVPacket *pktAudio = NULL;
 int FFZone = 0, FFFail = 0;
 
 // audio handling
 char soundDriverFileName[256] = "sb16.drv";
-#define AUDIO_RING_SIZE 4
-DVoice *audioRing[AUDIO_RING_SIZE];
+//#define AUDIO_RING_SIZE 16
+DVoice **audioRing = NULL;
+int AUDIO_RING_SIZE = 6;
+int MaxVoicesRingCount = 2;
 int audioRingStart = 0;
-int audioRingEnd = 0;
 int audioRingCount = 0;
 int audioFrameSamples = 0;
+int audioLastAddIdx = -1;
+int audioLastQueueIdx = -1;
 int countRingQueued = 0;
 int countRingAdd = 0;
+int countRingOverWritten = 0;
 int curVoicePos = 0;
 SoundDRV *SndDrv = NULL;
 void *SndBuff = NULL;
-
+int retOpenAudio = 0;
 bool Audio16Bits = false,
      AudioStereo = false,
-     AudioEnabled = false,
      AudioMuted = false,
-     SoundEnabled = true,
      AboutDebugInfo = false;
 int AudioSamplingSpeed = 22000;
 int VoiceSampleSize = 8000;
@@ -246,7 +262,7 @@ DVoicePack VP = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 };
 // Add Voice
 int AddVoice(DVoice *Vc,int State, bool updateSpeed);
 // Queue Voice
-int QueueVoice(DVoice *toQueueVc,DVoice *Vc,int State, bool updateSpeed);
+int QueueVoice(DVoice *toQueueVc,DVoice *Vc,int State, bool updateSpeed, bool replaceExisting);
 
 // Create/Prepare Audio Ring DVoices
 bool CreatePrepAudioRingDVoices();
@@ -257,11 +273,17 @@ bool DestroyUnprepAudioRingDVoices();
 
 
 // return 0 if success, code error if failed
-int OpenVidFFMPEG(char *FileName);
+int OpenFFMPEG(char *FileName);
+int OpenVideoFFMPEG(char *FileName);
+int OpenAudioFFMPEG(char *FileName);
 // return 1 if new frame found, 0 else
 int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop);
+// return 1 if new frame found, 0 else
+int GetNextAudioFrameFFMPEG();
 // try to seek to FrameNum return 1 successfull, 0 else
 int SeekFrameFFMPEG(DgSurf *S16, unsigned int FrameNum);
+// free any memory ressources allocated by OpenFFMPEG
+void DestroyFFMPEG();
 // close an opened video
 void CloseVidFFMPEG();
 
@@ -283,30 +305,32 @@ char SynchBuff[SIZE_SYNCH_BUFF];
 // Windows Handler
 WinHandler *WH;
 // Main window -------------------------------
-String sMainWinName("DUGL Video Player 1.0 alpha 3");
+String sMainWinName("DUGL Player 1.0 alpha4");
 MainWin *MWDPlayer;
 GraphBox *GphBVideo;
 Menu *MWMn;
-ImgButton *BtPlay,*BtPauseCont,*BtExit;
+ImgButton *BtPlay,*BtPauseCont, *BtPlayMode,*BtExit;
+GraphBox *WidgetAudioVolume;
 Label *LbTime;
 HzSlider *HSldAdv;
-CocheBox *CBxLoop;
-DgSurf *ImgPlay,*ImgExit,*ImgPCont;
+
+DgSurf *ImgPlay,*ImgExit, *ImgLoop, *ImgPlayOnce, *ImgPCont;
 
 // glabal var
 int redrawVid=1;
 int ignoreSeekSliderChange = 0;
 
-char playTime[16];
+char playTime[128];
 // events
 void OnMenuOpenVid(),OnMenuCloseVid(),OnMenuExit(),OnMenuFullScr(),
      OnMenuPauseCont(),OnMenuAbout();
 void OnMenuVSynch(),OnMenuSmoothFS(),OnMenuFSFps(),OnMenuFSTime();
 void OnMenuLoop(),OnMenuFrameDrop();
-void OnChBLoopChanged(char),OnMenuInterpolateUV(), OnMenuFitScreen();
+void OnMenuInterpolateUV(), OnMenuFitScreen();
 
 void GphBDrawVideo(GraphBox *Me),GphBScanVideo(GraphBox *Me);
 void OnBtPlayClick();
+void OnBtPlayModeClick();
 void OnSeekSliderChange(int val);
 
 // screen shot file name
@@ -354,6 +378,8 @@ void BtOkAboutClick(),GphBDrawAbout(GraphBox *Me),OnGphBScanAbout(GraphBox *Me);
 int OpenVid(char *FileName);
 // return 1 if new frame found, 0 else
 int GetNextFrame(DgSurf *S16, unsigned int nFramesToDrop);
+// return 1 if new audio frame found, 0 else
+int GetNextAudioFrame();
 // close an opened video
 void CloseVid();
 // utils
@@ -362,6 +388,7 @@ void UpdatePlayTime();
 bool IsFileExist(const char *fname);
 bool StringToBool(char *str);
 void LoadConfig();
+void timeToStr(float timeInSec, char *outStr, size_t outStrSize);
 
 int main (int argc, char ** argv) {
     if (!DgInit()) {
@@ -395,6 +422,12 @@ int main (int argc, char ** argv) {
     if (LoadBMP16(&ImgExit,"gfx/shut.bmp")==0) {
       printf("Error loading shut.bmp\n"); exit(-1);
     }
+    if (LoadBMP16(&ImgPlayOnce,"gfx/once.bmp")==0) {
+      printf("Error loading once.bmp\n"); exit(-1);
+    }
+    if (LoadBMP16(&ImgLoop,"gfx/loop.bmp")==0) {
+      printf("Error loading loop.bmp\n"); exit(-1);
+    }
 
     if (!LoadKbMAP(&KM,keybMapFileName)) {
       printf("Error loading keyboard map '%s'\n", keybMapFileName); exit(-1); }
@@ -413,6 +446,9 @@ int main (int argc, char ** argv) {
        printf("Error setting keyborad map\n");  exit(-1);
     }
     MouseSupported = (InstallMouse()!=0);
+
+    // sound
+    InitSound(Audio16Bits, AudioStereo, AudioSamplingSpeed);
 
     // save starting dir
     getcwd(startdir, PATH_MAX - 1);
@@ -455,8 +491,6 @@ int main (int argc, char ** argv) {
        DestroySurf(MsPtr16);
        DestroySurf(MsPtr);
     }
-    // sound
-    InitSound(Audio16Bits, AudioStereo, AudioSamplingSpeed);
 
     //** GUI ************************************************
     // create the winHandler
@@ -472,14 +506,14 @@ int main (int argc, char ** argv) {
     // buttons
     BtPlay=new ImgButton(2,3,29,27,MWDPlayer,ImgPlay);
     BtPlay->Click=OnBtPlayClick; // set click handler
-    BtPauseCont=new ImgButton(34,3,59,27,MWDPlayer,ImgPCont);
+    BtPauseCont=new ImgButton(32,3,57,27,MWDPlayer,ImgPCont);
     BtPauseCont->Click=OnMenuPauseCont; // set click handler
-    CBxLoop=new CocheBox(63,5,118,25,MWDPlayer,NULL,"loop",0);
-    CBxLoop->Changed=OnChBLoopChanged;
-    HSldAdv=new HzSlider(120,screenX-123,7,MWDPlayer,0,100);
+    BtPlayMode=new ImgButton(60,3,85,27,MWDPlayer,(!PlayLooping)?ImgPlayOnce:ImgLoop);
+    BtPlayMode->Click= OnBtPlayModeClick;
+    HSldAdv=new HzSlider(90,screenX-240,7,MWDPlayer,0,100);
     HSldAdv->Changed = OnSeekSliderChange;
-    LbTime=new Label(screenX-118,5,screenX-43,25,MWDPlayer,"00:00:00",AJ_LEFT);
-
+    LbTime=new Label(screenX-238,5,screenX-82,25,MWDPlayer,"00h00m00s/00h00m00s",AJ_LEFT);
+    WidgetAudioVolume = new GraphBox(screenX-81,3,screenX-38,26,MWDPlayer,RGB16(230,231,236));
     BtExit=new ImgButton(screenX-36,3,screenX-10,27,MWDPlayer,ImgExit);
     BtExit->Click=OnMenuExit; // set click handler
     // menu
@@ -516,64 +550,87 @@ int main (int argc, char ** argv) {
           framenum=PosSynch;
         }
         if (VidPause==0) {
-          if (PosSynch!=framenum) {
-             if (DropFrames) {
-                if (GetNextFrame(Sframe16, (PosSynch > (framenum))  ? (PosSynch-framenum-1) : 0)) {
-                   redrawVid=1;
-                   if (!FrameAvlbl) FrameAvlbl=true;
-                }
-                else {
-                   VidPause=1; // set video as paused
-                   // enable GUI if full screen, and if we are not looping
-                   if (EnableGUI==0 && (!CBxLoop->True)) {
-                      OnMenuFullScr();
-                   }
-                }
-             } else {
-                if (GetNextFrame(Sframe16,0)==1) {
-                   if (audioRingCount > 0) {
-                     int previousToStartIdx = (audioRingStart+AUDIO_RING_SIZE-1)%AUDIO_RING_SIZE;
-                     if (!SndDrv->ExistVoice(audioRing[previousToStartIdx])) {
-                          if(SndDrv->GetCountVoices() == 0) {
-                             AddVoice(audioRing[audioRingStart], 0, true);
-                             countRingAdd++;
-                             audioRingCount--;
-                             audioRingStart=(audioRingStart+1)%AUDIO_RING_SIZE;
-                          }
-                     } else {
-                         if (!QueueVoice(audioRing[previousToStartIdx],audioRing[audioRingStart], 0, true)) {
-                             AddVoice(audioRing[audioRingStart], 0, true);
-                             countRingAdd++;
-                         } else {
-                             countRingQueued++;
-                         }
-                         audioRingCount--;
-                         audioRingStart=(audioRingStart+1)%AUDIO_RING_SIZE;
-                     }
-                   }
+           if (VidOpenHasAudio) {
+              while (audioRingCount < MaxVoicesRingCount && !VidAudioEnded)
+                  GetNextAudioFrame();
 
-                   redrawVid=1;
-                   if (!FrameAvlbl) FrameAvlbl=true;
-                   frameskipped+=PosSynch-framenum-1; // we are too slow ? :(
-                } else {
-                   VidPause=1; // set video as paused
-                   // enable GUI if full screen, and if we are not looping
-                   if (EnableGUI==0 && (!CBxLoop->True)) {
-                      OnMenuFullScr();
-                   }
-                }
-             }
+              // update of the state of playing/queued voice
+              if (audioLastAddIdx != -1 && !SndDrv->IsPlayingVoice(audioRing[audioLastAddIdx])) {
+                audioLastAddIdx = -1;
+              }
+              if (audioLastQueueIdx != -1) {
+                  if (!SndDrv->IsQueuedVoice(audioRing[audioLastQueueIdx])) {
+                    if (SndDrv->IsPlayingVoice(audioRing[audioLastQueueIdx])) {
+                        audioLastAddIdx = audioLastQueueIdx;
+                        audioLastQueueIdx = -1;
+                    } else {
+                        audioLastQueueIdx = -1;
+                    }
+                  }
+              }
 
-             framenum=PosSynch;
-             UpdatePlayTime();
-          }
+              if (audioRingCount > 0) {
+
+                if (audioLastAddIdx == -1) {
+                    AddVoice(audioRing[audioRingStart], 0, true);
+                    audioLastAddIdx = audioRingStart;
+                    audioLastQueueIdx = -1;
+                    countRingAdd++;
+                    audioRingCount--;
+                    audioRingStart=(audioRingStart+1)%AUDIO_RING_SIZE;
+                }
+                if (audioRingCount > 0 && audioLastAddIdx != -1) {
+                    if (QueueVoice(audioRing[audioLastAddIdx],audioRing[audioRingStart], 0, true, false)) {
+                        audioLastQueueIdx = audioRingStart;
+                        countRingQueued++;
+                        audioRingCount--;
+                        audioRingStart=(audioRingStart+1)%AUDIO_RING_SIZE;
+                        if (!VidOpenHasVideo) {
+                            UpdatePlayTime();
+                        }
+                    }
+                }
+              }
+           }
+
+          if (VidOpenHasVideo && !VidVideoEnded) {
+              if (PosSynch!=framenum) {
+                 if (DropFrames) {
+                    if (GetNextFrame(Sframe16, (PosSynch > (framenum))  ? (PosSynch-framenum-1) : 0)) {
+                       redrawVid=1;
+                       if (!FrameAvlbl) FrameAvlbl=true;
+                    }
+                    else {
+                       // enable GUI if full screen, and if we are not looping
+                       if (EnableGUI==0 && (!PlayLooping)) {
+                          OnMenuFullScr();
+                       }
+                    }
+                 } else {
+                    if (GetNextFrame(Sframe16,0)==1) {
+                       redrawVid=1;
+                       if (!FrameAvlbl) FrameAvlbl=true;
+                       frameskipped+=PosSynch-framenum-1; // we are too slow ? :(
+                    } else {
+                       // enable GUI if full screen, and if we are not looping
+                       if (EnableGUI==0 && (!PlayLooping)) {
+                          OnMenuFullScr();
+                       }
+                    }
+                 }
+
+                 framenum=PosSynch;
+                 UpdatePlayTime();
+              }
+            }
         }
-      }
+    }
 
+    VidEnded = VidAudioEnded && VidVideoEnded;
       // loop ?
       if (VidEnded) {
         if (VidOpen) {
-            if(CBxLoop->True) {
+            if(PlayLooping) {
                 String saveInputFile = CurVidFile;
                 CloseVid();
                 CurVidFile = saveInputFile;
@@ -609,7 +666,7 @@ int main (int argc, char ** argv) {
             case KB_KEY_F2 : OnMenuInterpolateUV(); break; // F2
             case KB_KEY_F3 : OnMenuOpenVid(); break; // F3
             case KB_KEY_F4 : OnMenuCloseVid(); break; // F4
-            case KB_KEY_F9 : CBxLoop->SetTrue(!CBxLoop->True); break; // F9
+            case KB_KEY_F9 : OnBtPlayModeClick(); break; // F9
             case KB_KEY_F10 : DropFrames = !DropFrames; break; // F10
             case KB_KEY_F11 : FitVideo = !FitVideo; redrawVid=1; break; // F11
             case KB_KEY_F8 : OnMenuVSynch(); break; // F8
@@ -631,7 +688,7 @@ int main (int argc, char ** argv) {
         if (keyCode==0x19 &&  (keyFLAG&KB_ALT_PR))
           OnBtPlayClick();
 
-        if (keyCode==KB_KEY_F9) CBxLoop->SetTrue(!CBxLoop->True);
+        if (keyCode==KB_KEY_F9) OnBtPlayModeClick();
         if (keyCode==KB_KEY_F11) { FitVideo = !FitVideo; redrawVid=1; }// F11
         if (keyCode==KB_KEY_F10) DropFrames = !DropFrames; // F10
         if (keyCode==KB_KEY_F8) OnMenuVSynch();
@@ -772,21 +829,27 @@ bool StringToBool(char *str) {
 }
 
 void UpdatePlayTime() {
-  unsigned int iplayTime,videoAdv=0;
+  unsigned int iplayTime=0,videoAdv=0;
 
+  videoAdv=0;
   if (VidOpen) {
-    iplayTime=(unsigned int)(float(framenum-frameskipped)/VideoFps);
-    sprintf(playTime,"%02u:%02u:%02u",(iplayTime/3600),(iplayTime/60)%60,iplayTime%60);
-    if (videoFramesCount>0) {
-      videoAdv=(unsigned int)((double)(framenum-frameskipped)*100.0 / (double)(videoFramesCount));
-    } else if(sizeVidFile>0) {
-      videoAdv=(unsigned int)((((double)readVidFileBytes)*100.0) / (double)(sizeVidFile));
+    if (VidOpenHasVideo) {
+        iplayTime=(unsigned int)(float(framenum-frameskipped)/VideoFps);
+        if (videoFramesCount>0) {
+          videoAdv=(unsigned int)((double)(framenum-frameskipped)*100.0 / (double)(videoFramesCount));
+        } else if(sizeVidFile>0) {
+          videoAdv=(unsigned int)((((double)readVidFileBytes)*100.0) / (double)(sizeVidFile));
+        }
+        else
+          videoAdv=0;
+    } else if (VidOpenHasAudio) {
+         iplayTime = (int)(((double)(VoiceSampleSize) * (double)(countRingQueued + countRingAdd + countRingOverWritten)) /(double)pAudioCodecCtx->sample_rate);
+         videoAdv = ((double)(iplayTime) * 100.0) / (double)(AudioTime);
     }
-    else
-      videoAdv=0;
+    timeToStr(iplayTime, playTime, 127);
   }
   else {
-    sprintf(playTime,"00:00:00");
+    sprintf(playTime,"0s");
   }
   if (ignoreSeekSliderChange != 1) {
       ignoreSeekSliderChange = 1;
@@ -888,6 +951,11 @@ void OnBtPlayClick() {
   OpenVid(CurVidFile.StrPtr);
 }
 
+void OnBtPlayModeClick() {
+    PlayLooping = !PlayLooping;
+    BtPlayMode->SetImage((!PlayLooping)?ImgPlayOnce:ImgLoop);
+}
+
 
 void OnMenuVSynch() {
    SynchScreen=(!SynchScreen);
@@ -905,10 +973,6 @@ void OnMenuFSTime() {
    FullScrShowTime=(!FullScrShowTime);
 }
 
-void OnChBLoopChanged(char) {
-  CBxLoop->UnsetFocus();
-}
-
 void OnMenuFitScreen() {
   FitVideo = !FitVideo; redrawVid=1;
 }
@@ -918,7 +982,7 @@ void OnMenuInterpolateUV() {
 }
 
 void OnMenuLoop() {
-    CBxLoop->SetTrue(!CBxLoop->True);
+    OnBtPlayModeClick();
 }
 
 void OnMenuFrameDrop() {
@@ -937,7 +1001,7 @@ void OnSeekSliderChange(int val) {
         case 4:
             targetFrame = val * videoFramesCount / 100;
             if (SeekFrameFFMPEG(Sframe16, targetFrame) == 1) {
-                VidPause = true;
+                //VidPause = true;
                 framenum = targetFrame;
                 frameskipped = 0;
                 redrawVid = 1;
@@ -973,9 +1037,9 @@ void GphBDrawAbout(GraphBox *Me) {
    SetTextCol(WH->m_GraphCtxt->WinBlanc);
    if (!AboutDebugInfo) OutText16Mode("\n", AJ_MID);
    FntCol=RGB16(0,255,0); // green
-   OutText16Mode("DUGL Player 1.0 Alpha 3 - DOS Video Player\n", AJ_MID);
+   OutText16Mode("DUGL Player 1.0 Alpha 4 - DOS Audio/Video Player\n", AJ_MID);
    FntCol=RGB16(255,255,255); // white
-   OutText16Mode("(C) By FFK 26 March 2026\n\n", AJ_MID);
+   OutText16Mode("(C) By FFK 12 April 2026\n\n", AJ_MID);
    OutText16Mode("Developped using :\n", AJ_MID);
    FntCol=RGB16(255,255,0); // yellow
    OutText16ModeFormat(AJ_MID, midText, 255,"DUGL %s\n",DUGL_VERSION);
@@ -1004,11 +1068,19 @@ void GphBDrawAbout(GraphBox *Me) {
             (Audio16Bits) ? "16":"8",
             (AudioStereo) ? "STEREO":"MONO",
             AudioSamplingSpeed);
-        if (AboutDebugInfo && pCodecAudioParam != NULL) {
+        if (AboutDebugInfo) {
+            //OutText16ModeFormat(AJ_MID, midText, 255, "video %i audio %i/ret %i\n", VidOpenHasVideo, VidOpenHasAudio,retOpenAudio);
             //char errV[256] = "";
             //av_strerror(audioFrameSamples, errV, 255);
-            OutText16ModeFormat(AJ_MID, midText, 255, "pos %i fs %i af %i,channels %i,rate %i,f \n count %i start %i end %i queued %i add %i\n", curVoicePos, audioFrameSamples,
-                pAudioCodecCtx->frame_size, pAudioCodecCtx->channels, pAudioCodecCtx->sample_rate, audioRingCount, audioRingStart, audioRingEnd, countRingQueued, countRingAdd);
+            if (pAudioCodecCtx != NULL) {
+                OutText16ModeFormat(AJ_MID, midText, 255, "pos %i fs %i af %i,channels %i,rate %i,f \n count %i start %i queued %i add %i C %i %i/%i", curVoicePos, audioFrameSamples,
+                                    pAudioCodecCtx->frame_size, pAudioCodecCtx->ch_layout.nb_channels, pAudioCodecCtx->sample_rate, audioRingCount, audioRingStart, countRingQueued, countRingAdd, SndDrv->GetCountVoices(), audioLastAddIdx, audioLastQueueIdx);
+                if (audioLastAddIdx != -1 && SndDrv->IsPlayingVoice(audioRing[audioLastAddIdx]))
+                    OutText16("P-|>");
+
+            } else {
+                OutText16ModeFormat(AJ_MID, midText, 255, "NO AUDIO STREAM\n");
+            }
         }
     }
 
@@ -1119,6 +1191,9 @@ void LoadConfig()
                     else if(strcmp(infoName,"EnableSound") == 0  && ListInfoIndex->countStrings >= 1) {
                       SoundEnabled = StringToBool(ListInfoIndex->ListStrings[0]);
                     }
+                    else if(strcmp(infoName,"UseOldFFMPEGResampler") == 0  && ListInfoIndex->countStrings >= 1) {
+                      UseOldFFMPEGResampler = StringToBool(ListInfoIndex->ListStrings[0]);
+                    }
                     else if(strcmp(infoName,"SoundDriver") == 0  && ListInfoIndex->countStrings >= 1) {
                       if (IsFileExist(ListInfoIndex->ListStrings[0])) {
                         strcpy(soundDriverFileName, ListInfoIndex->ListStrings[0]);
@@ -1128,6 +1203,16 @@ void LoadConfig()
                       tempInt = atoi(ListInfoIndex->ListStrings[0]);
                       if (tempInt >= 8000 && tempInt <= 44100)
                         AudioSamplingSpeed = tempInt;
+                    }
+                    else if(strcmp(infoName,"VoicesRingSize") == 0  && ListInfoIndex->countStrings >= 1) {
+                      tempInt = atoi(ListInfoIndex->ListStrings[0]);
+                      if (tempInt >= 3)
+                        AUDIO_RING_SIZE = tempInt;
+                    }
+                    else if(strcmp(infoName,"MaxVoicesRingCount") == 0  && ListInfoIndex->countStrings >= 1) {
+                      tempInt = atoi(ListInfoIndex->ListStrings[0]);
+                      if (tempInt >= 1 && tempInt < AUDIO_RING_SIZE)
+                        MaxVoicesRingCount = tempInt;
                     }
                     else if(strcmp(infoName,"VoiceSampleSize") == 0  && ListInfoIndex->countStrings >= 1) {
                       VoiceSampleSize = atoi(ListInfoIndex->ListStrings[0]);
@@ -1168,9 +1253,6 @@ void LoadConfig()
 }
 
 
-
-
-
 ///////////////////////////////////////
 
 
@@ -1181,6 +1263,7 @@ int OpenVid(char *FileName)
     int    retFF  = 0;
     String myFile = FileName;
     String InfImg(256);
+    char strTime[256]="";
 
     int    OpenVidWidth = 0;
     int    OpenVidHeight = 0;
@@ -1188,35 +1271,47 @@ int OpenVid(char *FileName)
     String sFinalLabel = sMainWinName;
 
     CloseVid();
+    audioRingStart = 0;
+    audioRingCount = 0;
+    curVoicePos = 0;
 
-    if((retFF=OpenVidFFMPEG(myFile.StrPtr)) == 0)
+
+    if((retFF=OpenFFMPEG(myFile.StrPtr)) == 0)
        kindVidOpened = 4;
+    if (kindVidOpened > 0) {
+      if (!VidOpenHasVideo) {
+         if (CreateSurf(&Sframe16, GphBVideo->VGraphBox.MaxX-GphBVideo->VGraphBox.MinX+1, GphBVideo->VGraphBox.MaxY-GphBVideo->VGraphBox.MinY+1, 16)) {
+            SetOrgSurf(Sframe16, 0, Sframe16->ResV/2);
+         }
+      }
+    }
+
     if (VidOpen && kindVidOpened > 0) {
-      char errBuff[128]="";
-      av_make_error_string(errBuff, 127, FFFail);
-      sprintf(InfImg.StrPtr,"%ix%i %3.1ffps %3.1f secs", Sframe16->ResH, Sframe16->ResV, VideoFps, VideoTime);
+      if (VidOpenHasVideo) {
+        timeToStr(VideoTime, strTime, 255);
+        sprintf(InfImg.StrPtr,"%ix%i||%3.1ffps||%s", Sframe16->ResH, Sframe16->ResV, VideoFps, strTime);
+      } else {
+        timeToStr(AudioTime, strTime, 255);
+        sprintf(InfImg.StrPtr,"%iHz||%iCh||%s", pAudioCodecCtx->sample_rate, pAudioCodecCtx->ch_layout.nb_channels, strTime);
+      }
       fnsplit(CurVidFile.StrPtr, tdrv, tpath, tfile, text);
       sFinalLabel = sFinalLabel + '<' + tfile + text + ">" + InfImg;
       redrawVid = 1;
       FrameAvlbl = true;
       framenum = true;
-      audioRingStart = 0;
-      audioRingEnd = 0;
-      audioRingCount = 0;
-      curVoicePos = 0;
       countRingQueued = 0;
       countRingAdd = 0;
+      countRingOverWritten = 0;
+      MWDPlayer->Label = sFinalLabel;
+      MWDPlayer->Redraw();
     }
-
-    MWDPlayer->Label = sFinalLabel;
-    MWDPlayer->Redraw();
 
     return retFF;
 }
 // return 1 if new frame found, 0 else
 int GetNextFrame(DgSurf *S16, unsigned int nFramesToDrop)
 {
-    if (!VidOpen)
+    if (!VidOpen || !VidOpenHasVideo)
         return 0;
 
    switch(kindVidOpened) {
@@ -1226,15 +1321,41 @@ int GetNextFrame(DgSurf *S16, unsigned int nFramesToDrop)
        return 0;
    }
 }
+
+// return 1 if new audio frame found, 0 else
+int GetNextAudioFrame()
+{
+    if (!VidOpen || !VidOpenHasAudio)
+        return 0;
+
+    retOpenAudio = 22222;
+   switch(kindVidOpened) {
+     case 4:
+       retOpenAudio = 33333;
+       return GetNextAudioFrameFFMPEG();
+     default:
+       return 0;
+   }
+}
+
 // close an opened video
 void CloseVid() {
   if (VidOpen && kindVidOpened > 0) {
     MWDPlayer->Label = sMainWinName;
     MWDPlayer->Redraw();
+    if (AudioEnabled) {
+        while (SndDrv->GetCountVoices() > 0);
+    }
     switch(kindVidOpened) {
       case 4:
-        CloseVidFFMPEG(); break;
+        DestroyFFMPEG();
+        if (pkt) {
+            av_packet_free(&pkt);
+            pkt = NULL;
+        }
+        break;
     }
+
     kindVidOpened = 0;
     VideoFps = 0.0f;
     VideoTime = 0.0f;
@@ -1244,66 +1365,158 @@ void CloseVid() {
     videoHeight = 0;
     videoFramesCount = 0;
     framenum = 0;
+    VidOpen = false;
+    VidOpenHasAudio = false;
+    VidOpenHasVideo = false;
     UpdatePlayTime();
   }
 }
 // FFMPEG /////////////////////////////
 
-void DestroyFFMPEG(); // internal cleanup
+
+void DestroyVideoFFMPEG();
+void DestroyAudioFFMPEG();
 // return 0 if success, code error if failed
-int OpenVidFFMPEG(char *FileName) {
+int OpenFFMPEG(char *FileName) {
+
+    VidOpenHasAudio = false;
+    VidOpenHasVideo = false;
+    OpenVideoFFMPEG(FileName);
+    OpenAudioFFMPEG(FileName);
+
+    if (!VidOpenHasVideo && !VidOpenHasAudio)
+        return 1;
+
+    VidOpen=true; // opened video
+    VidAudioEnded=false;
+    VidVideoEnded=false;
+
+    if (VidOpenHasVideo) {
+        // allocate buffer required for u,v interpolation
+        uFinal = (unsigned char*) malloc(videoWidth);
+        vFinal = (unsigned char*) malloc(videoWidth);
+        if (uFinal == NULL || vFinal == NULL) {
+            VidOpenHasVideo = false;
+            DestroyVideoFFMPEG();
+        } else if (CreateSurf(&Sframe16, videoWidth, videoHeight, 16)==0) {
+            VidOpenHasVideo = false;
+            DestroyVideoFFMPEG();
+        } else if(GetNextFrameFFMPEG(Sframe16,0)!=1) {
+            // create Surf that will contain final frame
+            VidOpenHasVideo = false;
+            DestroyVideoFFMPEG();
+        }
+    }
+
+    if (VidOpenHasAudio) {
+        retOpenAudio = 11111;
+        audioRingCount = 0;
+        audioRingStart=0;
+        if(GetNextAudioFrameFFMPEG()!=1) {
+            VidOpenHasAudio = false;
+            DestroyAudioFFMPEG();
+        } else {
+            audioLastAddIdx = -1;
+            audioLastQueueIdx = -1;
+        }
+    }
+
+    if (!VidOpenHasAudio && !VidOpenHasVideo) {
+        VidOpen=false; // opened video
+        return 14; // no audio or video
+    }
+
+    if (!VidOpenHasAudio)
+        VidAudioEnded=true;
+    if (!VidOpenHasVideo)
+        VidVideoEnded=true;
+
+    framenum=0; // found one frame
+    PosSynch=0;
+    if (VidOpenHasVideo)
+        InitSynch(SynchBuff,&PosSynch,VideoFps);
+    else
+        InitSynch(SynchBuff,&PosSynch,20.0);
+
+    VidOpen=true; // opened video
+    VidPause=0;
+    VidEnded=false;
+    frameskipped=0;
+    FrameAvlbl = true;
+    redrawVid=1;
+    CurVidFile=FileName; // save current file
+    TNM[6].Activ = 1; // enable menu close
+    return 0;
+}
+
+int OpenVideoFFMPEG(char *FileName) {
     int retfunc = 0;
 
 	av_log_set_level(AV_LOG_QUIET);
 
 	// Open media file.
 	if (avformat_open_input(&pFormatCtx, FileName, NULL, NULL) != 0) {
-        DestroyFFMPEG();
+        avformat_close_input(&pFormatCtx);
+        pFormatCtx = NULL;
 		return 1;
 	}
 	// Get format info.
 	if (avformat_find_stream_info(pFormatCtx, NULL) < 0) {
-        DestroyFFMPEG();
+        avformat_close_input(&pFormatCtx);
+        pFormatCtx = NULL;
 		return 2;
 	}
     videoStreamIndex = av_find_best_stream(pFormatCtx, AVMEDIA_TYPE_VIDEO, -1, -1, NULL, 0);
+
+    if (videoStreamIndex >= 0 && pFormatCtx->streams[videoStreamIndex]->disposition & AV_DISPOSITION_ATTACHED_PIC)
+        videoStreamIndex = -1; // ignore any attachement
+
+    if (videoStreamIndex < 0) {
+        avformat_close_input(&pFormatCtx);
+        pFormatCtx = NULL;
+        return 3;
+    }
+
     VideoTime = (float)(pFormatCtx->duration)/AV_TIME_BASE;
     if (VideoTime < 0.0f)
         VideoTime = 0.0f;
 
-    if (videoStreamIndex < 0) {
-        DestroyFFMPEG();
-        return 3;
-    }
     AVStream *st;
     st = pFormatCtx->streams[videoStreamIndex];
     /* find decoder for the stream */
     pVideoCodec = avcodec_find_decoder(st->codecpar->codec_id);
     if (pVideoCodec == NULL) {
-        DestroyFFMPEG();
+        avformat_close_input(&pFormatCtx);
+        pFormatCtx = NULL;
+        videoStreamIndex = -1;
         return 4;
     }
+    if ((pkt = av_packet_alloc()) == NULL) {
+        avformat_close_input(&pFormatCtx);
+        pFormatCtx = NULL;
+        videoStreamIndex = -1;
+        return 4;
+    }
+
     /* Allocate a codec context for the decoder */
     pVideoCodecCtx = avcodec_alloc_context3(pVideoCodec);
     if (pVideoCodecCtx == NULL) {
-        DestroyFFMPEG();
+        DestroyVideoFFMPEG();
         return 5;
     }
     /* Copy codec parameters from input stream to output codec context */
     if (avcodec_parameters_to_context(pVideoCodecCtx, st->codecpar) < 0) {
-        DestroyFFMPEG();
+        DestroyVideoFFMPEG();
         return 6;
     }
     /* Init the decoders */
 
     if (avcodec_open2(pVideoCodecCtx, pVideoCodec, NULL) < 0) {
-        DestroyFFMPEG();
+        DestroyVideoFFMPEG();
         return 7;
     }
 
     video_stream = pFormatCtx->streams[videoStreamIndex];
-
-    int64_t FrameToVideoTimeBase = ((int64_t(video_stream->time_base.num) * AV_TIME_BASE) / int64_t(video_stream->time_base.den)) * (video_stream->time_base.den / video_stream->avg_frame_rate.num);
 
     AVDictionaryEntry *rotate_tag = av_dict_get(video_stream->metadata, "rotate", NULL, 0);
     if (rotate_tag != NULL) {
@@ -1316,30 +1529,19 @@ int OpenVidFFMPEG(char *FileName) {
     av_dump_format(pFormatCtx, 0, FileName, 0);
     /* allocate frame */
     videoFrame = av_frame_alloc();
-    audioFrame = av_frame_alloc();
     if (!videoFrame) {
-        DestroyFFMPEG();
+        DestroyVideoFFMPEG();
         return 8;
-    }
-
-    /* allocate packet */
-    pkt = av_packet_alloc();
-    if (!pkt) {
-        DestroyFFMPEG();
-        return 9;
     }
 
     // get frames per second
     VideoFps = (float)av_q2d(video_stream->r_frame_rate);
-    // init parser
-    if(pAudioCodecParser == NULL) {
-        audioFrameSamples = 555;
-        audioStreamIndex = -1;
-    }
+    // Need for convert time to ffmpeg time.
+    videoFramesCount = (VideoTime>0) ? ((int)(VideoFps*VideoTime)) : 1;
 
     pVideoCodecParser = av_parser_init(pVideoCodec->id);
     if(pVideoCodecParser == NULL) {
-        DestroyFFMPEG();
+        DestroyVideoFFMPEG();
         return 10;  // failed parser init
     }
     /* allocate image where the decoded image will be put */
@@ -1349,27 +1551,53 @@ int OpenVidFFMPEG(char *FileName) {
 
     if ((retfunc = av_image_alloc(video_dst_data, video_dst_linesize,
                        videoWidth, videoHeight, AV_PIX_FMT_RGB565BE, 1)) < 0) {
-        DestroyFFMPEG();
+        DestroyVideoFFMPEG();
         return 11; //"Could not allocate raw video buffer\n"
     }
-    video_dst_bufsize = retfunc;
+
+    VidOpenHasVideo = true;
+    return 0;
+}
+
+int OpenAudioFFMPEG(char *FileName) {
     if (AudioEnabled) {
+        SndDrv->DeleteAllVoices();
+	// Open media file.
+        if (avformat_open_input(&pAudioFormatCtx, FileName, NULL, NULL) != 0) {
+            return 1;
+        }
+        // Get format info.
+        if (avformat_find_stream_info(pAudioFormatCtx, NULL) < 0) {
+            DestroyFFMPEG();
+            return 2;
+        }
+        if ((pktAudio = av_packet_alloc()) == NULL) {
+            avformat_close_input(&pAudioFormatCtx);
+            pAudioFormatCtx = NULL;
+            audioStreamIndex = -1;
+            return 4;
+        }
+
         // handle optional audio stream
-        audioStreamIndex = av_find_best_stream(pFormatCtx, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
+        audioStreamIndex = av_find_best_stream(pAudioFormatCtx, AVMEDIA_TYPE_AUDIO, -1, -1, NULL, 0);
         if (audioStreamIndex >= 0) {
-            av_dump_format(pFormatCtx, audioStreamIndex, NULL, false);
+            av_dump_format(pAudioFormatCtx, audioStreamIndex, NULL, false);
+
             // Find the decoder for the video stream
-            pAudioCodec = avcodec_find_decoder(pFormatCtx->streams[audioStreamIndex]->codecpar->codec_id);
+            pAudioCodec = avcodec_find_decoder(pAudioFormatCtx->streams[audioStreamIndex]->codecpar->codec_id);
             if (pAudioCodec != NULL) {
+                /* dump input information to stderr */
+                av_dump_format(pAudioFormatCtx, 0, FileName, 0);
+
                 pAudioCodecCtx = avcodec_alloc_context3(pAudioCodec);
-                pCodecAudioParam = pFormatCtx->streams[audioStreamIndex]->codecpar;
-                audio_stream = pFormatCtx->streams[audioStreamIndex];
+                pCodecAudioParam = pAudioFormatCtx->streams[audioStreamIndex]->codecpar;
+                audio_stream = pAudioFormatCtx->streams[audioStreamIndex];
                 /* Copy codec parameters from input stream to output codec context */
                 if (avcodec_parameters_to_context(pAudioCodecCtx, audio_stream->codecpar) < 0) {
                     audioStreamIndex = -1;
                     audioFrameSamples = 444;
                 }
-                if (audioStreamIndex != -1) {
+                if (audioStreamIndex >= 0) {
                     //av_dict_set(pAudioCodecCtx->priv_data, "packet_size", "256", 0);
                     //pAudioCodecCtx->request_sample_fmt = AV_SAMPLE_FMT_S16;
                     if (avcodec_open2(pAudioCodecCtx, pAudioCodec, NULL) < 0) {
@@ -1378,8 +1606,7 @@ int OpenVidFFMPEG(char *FileName) {
                     } else {
                         pAudioCodecParser = av_parser_init(pAudioCodec->id);
 
-                        int dst_linesize = 0;
-                        uint64_t iInputLayout                    = av_get_default_channel_layout(pAudioCodecCtx->channels);
+                        uint64_t iInputLayout                    = av_get_default_channel_layout(pAudioCodecCtx->ch_layout.nb_channels);
                         enum AVSampleFormat eInputSampleFormat   = (AVSampleFormat)pAudioCodecCtx->sample_fmt;
                         int         iInputSampleRate             = pAudioCodecCtx->sample_rate;
 
@@ -1387,59 +1614,73 @@ int OpenVidFFMPEG(char *FileName) {
                         enum AVSampleFormat eOutputSampleFormat  = (Audio16Bits) ? AV_SAMPLE_FMT_S16 : AV_SAMPLE_FMT_U8;
                         int         iOutputSampleRate            = pAudioCodecCtx->sample_rate;
 
-                        au_convert_ctx= swr_alloc_set_opts(NULL,iOutputLayout, eOutputSampleFormat, iOutputSampleRate,
-                            iInputLayout,eInputSampleFormat, iInputSampleRate, 0, NULL);
+                        AVChannelLayout outLayout;
+                        av_channel_layout_default(&outLayout, (AudioStereo) ? 2 : 1);
+                        int dst_linesize = 0;
 
-                        UpdateAudioRingDVoicesSamplingSpeed(pAudioCodecCtx->sample_rate);
 
-                        swr_init(au_convert_ctx);
-                        audioFrameSamples = 333;
-                        SndDrv->ContinueSound();
+
+                        // allocate audio dest resample buffers (rounded by 1024)
+                        max_dst_nb_samples = ((VoiceSampleSize/1024)+1)*1024;
+                        if (av_samples_alloc_array_and_samples(&audio_dst_data, &audio_dst_linesize, (Audio16Bits) ? 2 : 1,
+                            max_dst_nb_samples, eOutputSampleFormat, 0) < 0) {
+                            audioStreamIndex = -1;
+                            audioFrameSamples = 555;
+                        } else {
+
+
+                            if (UseOldFFMPEGResampler) {
+                                au_convert_ctx= swr_alloc_set_opts(NULL,iOutputLayout, eOutputSampleFormat, iOutputSampleRate,
+                                    iInputLayout,eInputSampleFormat, iInputSampleRate, 0, NULL);
+                                if (au_convert_ctx == NULL) {
+                                    audioStreamIndex = -1;
+                                }
+                            } else {
+                                if (swr_alloc_set_opts2(&au_convert_ctx,
+                                    &outLayout, eOutputSampleFormat, iOutputSampleRate,
+                                    &pAudioCodecCtx->ch_layout, eInputSampleFormat, iInputSampleRate,
+                                    0, NULL) != 0) {
+                                    audioStreamIndex = -1;
+                                }
+                            }
+
+                            audioFrame = av_frame_alloc();
+
+                            if (audioStreamIndex != -1 && audioFrame != NULL) {
+                                AudioTime = (float)(pAudioFormatCtx->duration)/AV_TIME_BASE;
+                                if (AudioTime < 0.0f)
+                                    AudioTime = 0.0f;
+
+                                UpdateAudioRingDVoicesSamplingSpeed(pAudioCodecCtx->sample_rate);
+
+                                if (swr_init(au_convert_ctx) != 0) {
+                                    audioStreamIndex = -1;
+                                }
+                                audioFrameSamples = 333;
+                            } else {
+                                audioStreamIndex = -1;
+                            }
+
+                        }
                     }
                 }
 
-            } else {
-                audioFrameSamples = 222;
-                audioStreamIndex = -1;
             }
         }
     }
-
-    if (CreateSurf(&Sframe16, videoWidth, videoHeight, 16)==0) {
-        DestroyFFMPEG();
-        return 12; // no mem
+    if (audioStreamIndex < 0) {
+        DestroyAudioFFMPEG();
+        VidOpenHasAudio = false;
+        return 1; // no audio
     }
+    retOpenAudio = 7777777;
+    VidOpenHasAudio = true;
+    audioLastAddIdx = -1;
+    audioLastQueueIdx = -1;
+    audioRingStart = 0;
+    audioRingCount = 0;
+    curVoicePos = 0;
 
-    VidOpen=true; // opened video
-
-    // allocate buffer required for u,v interpolation
-    uFinal = (unsigned char*) malloc(videoWidth);
-    vFinal = (unsigned char*) malloc(videoWidth);
-    if (uFinal == NULL || vFinal == NULL) {
-        CloseVidFFMPEG();
-        return 13;  // no mem
-    }
-
-    // create Surf that will contain final frame
-    if((retfunc = GetNextFrameFFMPEG(Sframe16,0))!=1) {
-        CloseVidFFMPEG();
-        return retfunc;
-        //return 16;  // no frame
-    }
-    // Need for convert time to ffmpeg time.
-    videoFramesCount = (VideoTime>0) ? ((int)(VideoFps*VideoTime)) : 1;
-
-    framenum=0; // found one frame
-    PosSynch=0;
-    InitSynch(SynchBuff,&PosSynch,VideoFps);
-    VidOpen=true; // opened video
-    VidPause=0;
-    VidEnded=false;
-    frameskipped=0;
-    FrameAvlbl = true;
-    redrawVid=1;
-    CurVidFile=FileName; // save current file
-    TNM[6].Activ = 1; // enable menu close
     return 0;
 }
 
@@ -1450,13 +1691,12 @@ int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop) {
     int retfunc = 0;
     bool frameFound = false;
     DgSurf *Surf8bpp = NULL;
-    if (!VidOpen || videoStreamIndex < 0 ) return 2;
+    if (!VidOpen || !VidOpenHasVideo ) return 2;
 
     pVideoCodecCtx->skip_frame = AVDISCARD_NONKEY;
     while (nDrops > 0) {
         while (nDrops >0 && !frameFound && (ret_av = av_read_frame(pFormatCtx, pkt)) >= 0 ) {
 
-            audioFrameSamples = pkt->stream_index;
             if (pkt->stream_index == videoStreamIndex) {
 
                 if ((retfunc = avcodec_send_packet(pVideoCodecCtx, pkt)) < 0) {
@@ -1465,34 +1705,16 @@ int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop) {
                         if (nDrops>0) nDrops--;
                         continue;
                     }
-                    VidEnded=true; // we reached the end
+                    VidVideoEnded=true; // we reached the end
                     return 0; // no frame
                 }
                 frameFound = true;
-            } else if (AudioEnabled && pkt->stream_index == audioStreamIndex) {
-                audioFrameSamples = 0; //audioFrame->nb_samples;
-
-                if ((retfunc = avcodec_send_packet(pAudioCodecCtx, pkt)) == 0) {
-                    if (AudioEnabled) {
-                        if (avcodec_receive_frame(pAudioCodecCtx, audioFrame) == 0) {
-                            //int outframes = swr_convert(au_convert_ctx, (uint8_t **)&audioRing[audioRingStart]->Ptr, pCodecAudioParam->frame_size, (const uint8_t **) audioFrame->data, audioFrame->nb_samples);
-                            //SndDrv->AddVoice(audioRing[audioRingStart], 0, 0, NULL, 0);
-                            //audioRingStart = (audioRingStart+1)%AUDIO_RING_SIZE;
-
-                            av_frame_unref(audioFrame);
-                        }
-                    }
-                    av_packet_unref(pkt);
-                    //av_samples_get_buffer_size()
-                }
-
-            } else {
-                av_packet_unref(pkt);
             }
+            av_packet_unref(pkt);
         }
         // last read failure ?
         if (ret_av < 0) {
-            VidEnded = true;
+            VidVideoEnded = true;
             return 0;
         }
         if (avcodec_receive_frame(pVideoCodecCtx, videoFrame)>=0)
@@ -1516,58 +1738,12 @@ int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop) {
                     av_packet_unref(pkt);
                     if (retfunc == AVERROR(EAGAIN))
                         continue;
-                    VidEnded=true; // we reached the end
+                    VidVideoEnded = true;
                     return 0; // no frame
                 }
                 // submit the packet to the decoder
                 // new Video found it should contain a frame
                 frameFound = true;
-                av_packet_unref(pkt);
-            } else if (AudioEnabled &&  pkt->stream_index == audioStreamIndex) {
-                avcodec_send_packet(pAudioCodecCtx, pkt);
-                while (avcodec_receive_frame(pAudioCodecCtx, audioFrame) == 0) {
-                    static int typeToSampleSize[] = { 1, 2, 2, 4 };
-                    int curVoiceOneSample = typeToSampleSize[audioRing[audioRingEnd]->Type];
-
-                    uint8_t *PtrDstVoice =(uint8_t *) audioRing[audioRingEnd]->Ptr;
-                    uint8_t *pDstVoiceData[1] = { (uint8_t *)&PtrDstVoice[curVoicePos] };
-                    int outframes = swr_convert(au_convert_ctx,
-                                                    pDstVoiceData,
-                                                    VoiceSampleSize-curVoicePos/curVoiceOneSample,
-                                                    (const uint8_t **) audioFrame->data,
-                                                    (VoiceSampleSize-(curVoicePos/curVoiceOneSample) > audioFrame->nb_samples) ? audioFrame->nb_samples: (VoiceSampleSize-curVoicePos/curVoiceOneSample));
-                    if (curVoicePos/curVoiceOneSample + outframes /*audioFrame->nb_samples*/ >= VoiceSampleSize) {
-                        if (audioRingCount == 0) {
-                            audioRingStart = audioRingEnd;
-                            audioRingEnd = (audioRingEnd+1)%AUDIO_RING_SIZE;
-                            audioRingCount = 1;
-                        } else {
-                            if (audioRingCount<AUDIO_RING_SIZE) {
-                                audioRingCount++;
-                                audioRingEnd = (audioRingEnd+1)%AUDIO_RING_SIZE;
-                            } else { // overlapped increase both start and end
-                                audioRingStart = (audioRingStart+1)%AUDIO_RING_SIZE;
-                                audioRingEnd = (audioRingEnd+1)%AUDIO_RING_SIZE;
-                            }
-                        }
-                        curVoicePos = (curVoicePos/curVoiceOneSample + outframes - VoiceSampleSize) * curVoiceOneSample;
-                        // last chunk ?
-                        if (curVoicePos > 0) {
-                            uint8_t *pLastDstVoiceData[1] = { (uint8_t *)audioRing[audioRingEnd]->Ptr };
-                            outframes = swr_convert(au_convert_ctx,
-                                        pLastDstVoiceData,
-                                        VoiceSampleSize,
-                                        (const uint8_t **) audioFrame->data,
-                                        curVoicePos/curVoiceOneSample);
-                            curVoicePos = outframes*curVoiceOneSample;
-                        }
-                    } else {
-                        curVoicePos += outframes*curVoiceOneSample; //audioFrame->nb_samples;
-                    }
-
-                    av_frame_unref(audioFrame);
-                }
-
                 av_packet_unref(pkt);
             } else {
                 //audioFrameSamples = 666;
@@ -1576,7 +1752,7 @@ int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop) {
         }
         // last read failure ?
         if (ret_av < 0 /*&& ret_av != AVERROR(EAGAIN)*/) {
-            VidEnded = true;
+            VidVideoEnded = true;
             return 0;
         }
         //if ((framenum&1) > 0) return 1;
@@ -1661,7 +1837,162 @@ int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop) {
     }
 
     //av_frame_unref(videoFrame);
-    VidEnded=true; // we reached the end
+    VidVideoEnded=true; // we reached the end
+    return 0;
+}
+
+static int cptLog = 0;
+
+#define FLOG(formatMsg, ...) { \
+    FILE *LOGFILE = fopen("./log.txt", "at");\
+    if (LOGFILE!=NULL) {\
+        fprintf(LOGFILE, formatMsg, __VA_ARGS__);\
+        fclose(LOGFILE);\
+        cptLog++; \
+    }\
+}
+
+
+
+int GetNextAudioFrameFFMPEG() {
+    int ret_av = 0;
+    int retfunc = 0;
+    int countAudFrameDecoded = 0;
+    if (!VidOpen || !VidOpenHasAudio ) return 0;
+    bool voiceAdded = false;
+
+    FREE_MMX();
+    while (1) {
+        while ((ret_av = av_read_frame(pAudioFormatCtx, pktAudio)) >= 0) {
+            retOpenAudio = 1;
+
+            if (pktAudio->stream_index == audioStreamIndex) {
+                avcodec_send_packet(pAudioCodecCtx, pktAudio);
+                retOpenAudio = 2;
+                while (avcodec_receive_frame(pAudioCodecCtx, audioFrame) >= 0) {
+                    static int typeToSampleSize[] = { 1, 2, 2, 4 };
+                    int curVoiceOneSample = typeToSampleSize[audioRing[0]->Type];
+
+                    int out_samples = swr_get_out_samples(au_convert_ctx, audioFrame->nb_samples);
+                    // reallocate/resize resample buffer if required
+                    int dst_nb_samples = ((out_samples/1024)+1)*1024;
+                    if (dst_nb_samples > max_dst_nb_samples) {
+                        av_freep(&audio_dst_data[0]);
+                        if (av_samples_alloc(audio_dst_data, &audio_dst_linesize, (Audio16Bits) ? 2 : 1,
+                                       dst_nb_samples, (Audio16Bits) ? AV_SAMPLE_FMT_S16 : AV_SAMPLE_FMT_U8, 1) < 0)
+                        {
+                            // failure to reallocate
+                            av_frame_unref(audioFrame);
+                            av_packet_unref(pktAudio);
+                            return 0;
+                        }
+                        max_dst_nb_samples = dst_nb_samples;
+                    }
+
+                    int outframes =  swr_convert(au_convert_ctx,
+                                                 audio_dst_data,
+                                                 max_dst_nb_samples,
+                                                (const uint8_t **) audioFrame->data,
+                                                audioFrame->nb_samples);
+
+                    if (outframes > 0) {
+                        countAudFrameDecoded ++;
+                    } else {
+                        /*char errbuf[256];
+                        av_strerror(outframes, errbuf, sizeof(errbuf));
+                        FLOG("Error swr_convert: %s\n", errbuf);*/
+                        av_frame_unref(audioFrame);
+                        continue;
+                    }
+                    int LastVoiceIdx = (audioRingStart+audioRingCount)%AUDIO_RING_SIZE;
+
+
+                    if (curVoicePos/curVoiceOneSample + outframes >= VoiceSampleSize) {
+
+                        if (audioRingCount<AUDIO_RING_SIZE) {
+                                audioRingCount++;
+                        } else {
+                            // ring buffer full overwrite oldest voice
+                            countRingOverWritten ++;
+                            audioRingStart = (audioRingStart+1)%AUDIO_RING_SIZE;
+                        }
+                        // copy remaining required data into current Voice
+                        int remainCopy = (VoiceSampleSize-(curVoicePos/curVoiceOneSample))*curVoiceOneSample;
+
+                        // completely fill last voice
+                        uint8_t *PtrDest = (uint8_t *)audioRing[LastVoiceIdx]->Ptr;
+                        if (remainCopy > 0) {
+                            memcpy(&PtrDest[curVoicePos], audio_dst_data[0], remainCopy);
+                        }
+                        int16_t *genPtr = (int16_t *)audioRing[LastVoiceIdx]->Ptr;
+
+                        curVoicePos = (outframes*curVoiceOneSample) - remainCopy;
+                        LastVoiceIdx = (audioRingStart+audioRingCount)%AUDIO_RING_SIZE;
+                        // handle case where outframes bigger than VoiceSampleSize
+                        while (curVoicePos/curVoiceOneSample > VoiceSampleSize) {
+                            memcpy(audioRing[LastVoiceIdx]->Ptr, &audio_dst_data[0][remainCopy], VoiceSampleSize*curVoiceOneSample);
+                            remainCopy += VoiceSampleSize*curVoiceOneSample;
+                            curVoicePos -= VoiceSampleSize*curVoiceOneSample;
+
+                            if (audioRingCount<AUDIO_RING_SIZE) {
+                                    audioRingCount++;
+                            } else {
+                                // ring buffer full: overwrite oldest voice
+                                countRingOverWritten ++;
+                                audioRingStart = (audioRingStart+1)%AUDIO_RING_SIZE;
+                            }
+                            LastVoiceIdx = (audioRingStart+audioRingCount)%AUDIO_RING_SIZE;
+                        }
+                        // last chunk ?
+                        if (curVoicePos > 0) {
+                            memset(audioRing[LastVoiceIdx]->Ptr, 0, audioRing[LastVoiceIdx]->Size);
+                            memcpy(audioRing[LastVoiceIdx]->Ptr, &audio_dst_data[0][remainCopy], curVoicePos);
+                        }
+
+                        retOpenAudio = 9;
+                        voiceAdded = true;
+                    } else if (outframes > 0) {
+                        uint8_t *PtrDest = (uint8_t *)audioRing[LastVoiceIdx]->Ptr;
+                        memcpy(&PtrDest[curVoicePos], audio_dst_data[0], outframes*curVoiceOneSample);
+                        curVoicePos += outframes*curVoiceOneSample; //audioFrame->nb_samples;
+                    }
+
+                    /*swr_convert(au_convert_ctx,
+                                                 audio_dst_data,
+                                                 max_dst_nb_samples,
+                                                NULL,
+                                                0);*/
+
+                    av_frame_unref(audioFrame);
+                }
+
+                av_packet_unref(pktAudio);
+            } else {
+                //audioFrameSamples = 666;
+                av_packet_unref(pktAudio);
+            }
+            if (voiceAdded)
+                return 1;
+        }
+        // file ended but there is some remaining audio data
+        if (countAudFrameDecoded > 0) {
+            if (audioRingCount<AUDIO_RING_SIZE) {
+                    audioRingCount++;
+            } else {
+                // ring buffer full: overwrite oldest voice
+                audioRingStart = (audioRingStart+1)%AUDIO_RING_SIZE;
+            }
+            return 1;
+        }
+        // last read failure ?
+        if (ret_av < 0 /*&& ret_av != AVERROR(EAGAIN)*/) {
+            VidAudioEnded = true;
+            retOpenAudio = 8;
+            return 0;
+        }
+    }
+    VidAudioEnded = true;
+    retOpenAudio = 6;
     return 0;
 }
 
@@ -1675,8 +2006,7 @@ int SeekFrameFFMPEG(DgSurf *S16, unsigned int FrameNum) {
 }
 
 // destroy/free as much as possible ffmpeg allocated mem/ressources
-void DestroyFFMPEG() {
-
+void DestroyVideoFFMPEG() {
     if (pVideoCodecCtx) {
         avcodec_send_packet(pVideoCodecCtx, NULL);
         avcodec_free_context(&pVideoCodecCtx);
@@ -1695,6 +2025,28 @@ void DestroyFFMPEG() {
         av_frame_free(&videoFrame);
         videoFrame = NULL;
     }
+    if (pkt) {
+        av_packet_free(&pkt);
+        pkt = NULL;
+    }
+    videoStreamIndex = -1;
+    video_stream = NULL;
+    VideoTime = 0.0f;
+
+    if(uFinal) { free(uFinal); uFinal = NULL; }
+    if(vFinal) { free(vFinal); vFinal = NULL; }
+    if (Sframe16!=NULL) {
+        DestroySurf(Sframe16);
+        Sframe16 = NULL;
+    }
+}
+
+void DestroyAudioFFMPEG() {
+
+    if (pAudioFormatCtx) {
+        avformat_close_input(&pAudioFormatCtx);
+        pAudioFormatCtx = NULL;
+    }
 
     if (pAudioCodecCtx) {
         avcodec_send_packet(pAudioCodecCtx, NULL);
@@ -1707,22 +2059,36 @@ void DestroyFFMPEG() {
         audioFrame = NULL;
     }
     if (au_convert_ctx != NULL) {
+        swr_convert(au_convert_ctx, audio_dst_data, max_dst_nb_samples, NULL, 0);
         swr_free(&au_convert_ctx);
+
+
         au_convert_ctx = NULL;
     }
-    if (pkt) {
-        av_packet_free(&pkt);
-        pkt = NULL;
+    if (pktAudio) {
+        av_packet_free(&pktAudio);
+        pktAudio = NULL;
     }
-
-    if(uFinal) { free(uFinal); uFinal = NULL; }
-    if(vFinal) { free(vFinal); vFinal = NULL; }
-    if (Sframe16!=NULL) {
-        DestroySurf(Sframe16);
-        Sframe16 = NULL;
+    if (audio_dst_data) {
+        av_freep(&audio_dst_data[0]);
+        audio_dst_data[0] = NULL;
+        av_freep(&audio_dst_data);
+        audio_dst_data = NULL;
     }
-    videoStreamIndex = -1;
+    AudioTime = 0.0f;
     audioStreamIndex = -1;
+    audioLastAddIdx = -1;
+    audioLastQueueIdx = -1;
+    max_dst_nb_samples = 0;
+    audio_stream = NULL;
+}
+
+void DestroyFFMPEG() {
+    // wait if any sound is still playing
+
+    DestroyVideoFFMPEG();
+    DestroyAudioFFMPEG();
+
     videoFramesCount = 0;
 }
 
@@ -1731,7 +2097,6 @@ void CloseVidFFMPEG() {
     if (!VidOpen)
         return;
     DestroyFFMPEG();
-    VidOpen = false;
 }
 
 
@@ -1863,10 +2228,6 @@ bool InitSound(bool bits16, bool stereo, int sampleSpeed) {
     if (!SoundEnabled || AudioEnabled)
         return false;
     AudioEnabled = false;
-    memset(audioRing, 0, sizeof(audioRing));
-    audioRingStart = 0;
-    audioRingEnd = 0;
-    audioRingCount = 0;
 
     // load the sound driver
     if (!LoadSoundDRV(&SndDrv,soundDriverFileName)) {
@@ -1877,6 +2238,7 @@ bool InitSound(bool bits16, bool stereo, int sampleSpeed) {
         DestroySoundDRV(SndDrv);
         return false; // no mem
     }
+    memset(SndBuff, 0, SndDrv->SizeBuff);
     // try to install the sound driver -1 means AUTODETECT
 	if (!SndDrv->InstallDriver(SndBuff,-1,5,1,-1)) {
         DestroySoundDRV(SndDrv);
@@ -1894,12 +2256,15 @@ bool InitSound(bool bits16, bool stereo, int sampleSpeed) {
         free(SndBuff);
         return false; // failure to detect sound card
 	}
-
     SndDrv->SetMasterVolume(MasterAudioVolume,MasterAudioVolume);
     SndDrv->SetVoiceVolume(VoiceAudioVolume,VoiceAudioVolume);
     SndDrv->SetOutGain(OutGainAudioVolume,OutGainAudioVolume);
     AudioEnabled = true;
     CreatePrepAudioRingDVoices();
+    audioRingStart = 0;
+    audioRingCount = 0;
+
+    SndDrv->ContinueSound();
 
     return true;
 }
@@ -1924,19 +2289,19 @@ int AddVoice(DVoice *Vc,int State, bool updateSpeed)
     if (updateSpeed && SndDrv->Cur_SampSpeed!=Vc->Freq) {
         VP.Speed=(128*Vc->Freq)/SndDrv->Cur_SampSpeed;
         return SndDrv->AddVoice(Vc,DS_EFF_CHG_SPEED,State,&VP,0);
-	} else // else add as it*/
+	} else // else add as it
         return SndDrv->AddVoice(Vc,0,State,NULL,0);
 }
 
-int QueueVoice(DVoice *toQueueVc,DVoice *Vc,int State, bool updateSpeed)
+int QueueVoice(DVoice *toQueueVc,DVoice *Vc,int State, bool updateSpeed, bool replaceExisting)
 {
     // adjust the speed of the voice if it's speed is inequal with
     // the current sampling speed
     if (updateSpeed && SndDrv->Cur_SampSpeed!=Vc->Freq) {
         VP.Speed=(128*Vc->Freq)/SndDrv->Cur_SampSpeed;
-        return SndDrv->QueueVoice(toQueueVc,Vc,DS_EFF_CHG_SPEED,State,&VP,0);
-	} else // else add as it*/
-        return SndDrv->QueueVoice(toQueueVc,Vc,0,State,NULL,0);
+        return SndDrv->QueueVoice(toQueueVc,Vc,DS_EFF_CHG_SPEED,State,&VP,0,replaceExisting);
+	} else // else add as it
+        return SndDrv->QueueVoice(toQueueVc,Vc,0,State,NULL,0,replaceExisting);
 }
 
 // Create/Prepare Audio Ring DVoices
@@ -1945,12 +2310,15 @@ bool CreatePrepAudioRingDVoices() {
     int i=0;
 
     audioRingStart = 0;
-    audioRingEnd = 0;
     audioRingCount = 0;
-    if (!AudioEnabled)
+    if (!AudioEnabled || AUDIO_RING_SIZE <= 0)
         return false;
+    audioRing = (DVoice**)malloc(sizeof(DVoice*)*AUDIO_RING_SIZE);
+    if (audioRing == NULL)
+        return false;
+
     for (i=0; i < AUDIO_RING_SIZE; i++) {
-        resCreate = CreateDVoice(&audioRing[i], Audio16Bits, AudioStereo, AudioSamplingSpeed/*pAudioCodecCtx->sample_rate*/, VoiceSampleSize);
+        resCreate = CreateDVoice(&audioRing[i], Audio16Bits, AudioStereo, AudioSamplingSpeed, VoiceSampleSize);
         if (!resCreate)
             break;
     }
@@ -1959,6 +2327,8 @@ bool CreatePrepAudioRingDVoices() {
             if (audioRing[i] != NULL)
                 DestroyDVoice(audioRing[i]);
         }
+        free(audioRing);
+        audioRing = NULL;
         return false;
     }
     for (i=0; i < AUDIO_RING_SIZE; i++) {
@@ -1992,10 +2362,21 @@ bool DestroyUnprepAudioRingDVoices() {
             audioRing[i] = NULL;
         }
     }
+    free(audioRing);
+    audioRing = NULL;
     audioRingStart = 0;
-    audioRingEnd = 0;
     audioRingCount = 0;
 
     return true;
 }
 
+void timeToStr(float timeInSec, char *outStr, size_t outStrSize) {
+    if (timeInSec >= 3600) {
+        snprintf(outStr, outStrSize,"%uh%02um%02us", (int)(timeInSec/3600),(int)(timeInSec/60)%60,(int)timeInSec%60);
+    } else if (timeInSec >= 60) {
+        snprintf(outStr, outStrSize, "%um%02us", (int)(timeInSec/60)%60,(int)timeInSec%60);
+    } else {
+        snprintf(outStr, outStrSize, "%us",(int)timeInSec);
+    }
+
+}
