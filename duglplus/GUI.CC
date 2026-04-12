@@ -513,6 +513,14 @@ Child::Child(int x1,int y1,int x2,int y2,MainWin *Father,ContBox *CBox) {
    XC1=x1; YC1=y1; XC2=x2; YC2=y2;
    MsXDown = MsYDown = 0;
    ChNode=(MainCBox)?(MainCBox->AddChild(this)):(Main->AddChild(this));
+   // events
+   OnMsDown = NULL;
+   OnMsUp = NULL;
+   OnMsIn = NULL;
+   OnMsOut = NULL;
+   OnMsDrag = NULL;
+   OnMsClick = NULL;
+   OnMsDoubleClick = NULL;
 }
 
 Child::~Child() {
@@ -571,25 +579,50 @@ void Child::Scan() {
    if (!Focus)
      LostFocus=(OldFocus)?1:0;
    OldFocus=Focus;
+
+   if (MsDown && (MsButton&MS_LEFT_BUTT)) {
+       if (LastMsXDrag != MsX || LastMsYDrag != MsY) {
+         LastMsXDrag = MsX;
+         LastMsYDrag = MsY;
+         if (OnMsDrag != NULL) OnMsDrag(MsX-XN, MsY-YN, MsIn);
+       }
+   }
    if (m_GraphCtxt->WinFreeMs && (MsButton&MS_LEFT_BUTT) && MsIn) {
      m_GraphCtxt->WinFreeMs=0;
      if(!MsDown) {
        MsXDown = MsX;
        MsYDown = MsY;
+       LastMsXDrag = MsX;
+       LastMsYDrag = MsY;
+       MsDown=1;
+       if (OnMsDown!=NULL) OnMsDown(MsXDown-XN, MsYDown-YN);
      }
-     MsDown=1;
    } else DblClick=0;
    if ((!m_GraphCtxt->WinFreeMs) && (!(MsButton&MS_LEFT_BUTT)) && MsDown) {
-     if (!MsDownD) { MsDownD=1; LastMsDownTime=DgTime; }
+     if (!MsDownD) {
+        MsDownD=1;
+        LastMsDownTime=DgTime;
+     }
      else
        if (MsDownD && DgTimerFreq) {
-         DblClick=((DgTime-LastMsDownTime)<DgTimerFreq/3); MsDownD=0; }
+         DblClick=((DgTime-LastMsDownTime)<DgTimerFreq/3 && MsIn);
+         if (DblClick && OnMsDoubleClick!=NULL) OnMsDoubleClick();
+         MsDownD=0;
+       }
      LostMsDown=1;
+     // don't call MsClick if MsDoubleClick called
+     if (MsIn && OnMsClick!= NULL && !DblClick)
+        OnMsClick();
      m_GraphCtxt->WinFreeMs=1;
      MsDown=0;
+     if (OnMsUp!=NULL) OnMsUp(MsXDown-XN, MsYDown-YN, MsIn);
    }
    if (MsDownD && DgTimerFreq && (DgTime-LastMsDownTime)>=DgTimerFreq/2) MsDownD=0;
    if (m_GraphCtxt->WinFreeMs && MsDown) MsDown=0;
+   if (!oldMsIn && MsIn && OnMsIn!=NULL) OnMsIn(MsX-XN, MsY-YN);
+   if (oldMsIn && !MsIn && OnMsOut!=NULL) OnMsOut(MsX-XN, MsY-YN);
+
+   oldMsIn = MsIn;
 }
 
 void Child::Validate() { }
@@ -969,6 +1002,16 @@ ImgButton::ImgButton(int x1,int y1,int x2,int y2,MainWin *Father,DgSurf *img,
 }
 
 ImgButton::~ImgButton() { }
+
+bool ImgButton::SetImage(DgSurf *img) {
+   if (img!=NULL && img->BitsPixel==Main->MWWinHand->S->BitsPixel) {
+     m_Img=img;
+     SetOrgSurf(m_Img,0,0); // force origin to left, bottom
+     Redraw();
+     return true;
+   }
+   return false;
+}
 
 void ImgButton::Draw() {
    DgView V1;

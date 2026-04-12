@@ -320,12 +320,22 @@ public:
    List	   *MyChList;
    int     XC1,YC1,XC2,YC2;
    int     MsXDown, MsYDown;
+   int     LastMsXDrag, LastMsYDrag;
    char    Focus,
            MsDown;
    char    Default,CanDefault,MsIn,Visible,Type,DblClick,LostFocus,LostMsDown;
+// events: all x,y coordinates are relative to Child View(widget)
+   void (*OnMsDown)(int x, int y);
+   void (*OnMsUp)(int x, int y, bool UpInside);
+   void (*OnMsIn)(int x, int y);
+   void (*OnMsOut)(int x, int y);
+   void (*OnMsDrag)(int x, int y, bool UpInside);
+   void (*OnMsClick)();
+   void (*OnMsDoubleClick)();
+
 protected:
    unsigned int LastMsDownTime;
-   char    OldFocus,MsDownD,resv[2];
+   char    OldFocus,MsDownD,oldMsIn,resv;
    DgView	  *MyVActiv;
 public:
    Child(int x1,int y1,int x2,int y2,MainWin *Father,ContBox *CBox);
@@ -408,6 +418,7 @@ public:
    ~ImgButton();
    void Draw();
    void Scan();
+   bool SetImage(DgSurf *Img);
    void SetFocus();
    void UnsetFocus();
    void Validate();
