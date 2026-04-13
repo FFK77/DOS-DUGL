@@ -76,6 +76,16 @@
     Improve config file with new sound audio paramters, true|false to enable disable,
     Add reverting to 640x480 if selected config file video resolution isn't available ...
     Keyboard 'P' now pause continue playing current video
+    13 April 2026: 1.0 alpha 4
+    - Implement decoding for audio only files
+    - Add master volume control widget
+    - Implement the three usual time progress modes (progress, remaining time, progress / total time)
+      user can switch between modes by mouse clicking on the time
+    - Implement seeking of audio track with video track
+    - Improve playing mode widget, now image Button (looping or single play)
+    - severals parameters added to config file
+    - Improved sound quality, bug fixes
+    ...
 */
 
 #include <stdio.h>
@@ -104,7 +114,20 @@ extern "C" {
 #include <libswresample/swresample.h>
 #include <zlib.h>
 
+
+
 // internal
+static int cptLog = 0;
+
+#define FLOG(formatMsg, ...) { \
+    FILE *LOGFILE = fopen("./log.txt", "at");\
+    if (LOGFILE!=NULL) {\
+        fprintf(LOGFILE, formatMsg, __VA_ARGS__);\
+        fclose(LOGFILE);\
+        cptLog++; \
+    }\
+}
+
 void ScanYUV2RGB16(void *YSrcPtr, void *USrcPtr, void *VSrcPtr, void *RGB16DstPtr, unsigned int PixelsSize);
 void Scan422YUV2RGB16(void *YSrcPtr, void *USrcPtr, void *VSrcPtr, void *RGB16DstPtr, unsigned int PixelsSize);
 
@@ -163,7 +186,7 @@ bool VidOpen=false,
     SoundEnabled = true,
     PlayLooping = false,
     UseOldFFMPEGResampler = true;
-
+int ProgressTimeMode = 2;
 float VideoFps = 0.0f;
 float VideoTime = 0.0f;
 float AudioTime = 0.0f;
@@ -329,8 +352,13 @@ void OnMenuLoop(),OnMenuFrameDrop();
 void OnMenuInterpolateUV(), OnMenuFitScreen();
 
 void GphBDrawVideo(GraphBox *Me),GphBScanVideo(GraphBox *Me);
+void GphBDrawVolume(GraphBox *Me);
+void OnMsDownGphBVolume(int x, int y);
+void OnMsDragGphBVolume(int x, int y, bool MsIn);
+
 void OnBtPlayClick();
 void OnBtPlayModeClick();
+void OnMsClickSwitchProgressTimeMode();
 void OnSeekSliderChange(int val);
 
 // screen shot file name
@@ -397,10 +425,6 @@ int main (int argc, char ** argv) {
     }
     LoadConfig();
 
-    if (!InstallKeyboard()) {
-       DgQuit(); DgUninstallTimer();
-       printf("Keyboard error\n");  exit(-1);
-    }
     if (CreateSurf(&rendSurf16, screenX, screenY, 16)==0) {
       printf("no mem\n"); exit(-1);
     }
@@ -441,6 +465,11 @@ int main (int argc, char ** argv) {
     if (!DgInstallTimer(250)) {
        DgQuit(); printf("Timer error\n"); exit(-1);
     }
+    if (!InstallKeyboard()) {
+       DgQuit(); DgUninstallTimer();
+       printf("Keyboard error\n");  exit(-1);
+    }
+
     if (!SetKbMAP(KM)) {
        DgUninstallTimer(); UninstallKeyboard(); DgQuit();
        printf("Error setting keyborad map\n");  exit(-1);
@@ -513,7 +542,12 @@ int main (int argc, char ** argv) {
     HSldAdv=new HzSlider(90,screenX-240,7,MWDPlayer,0,100);
     HSldAdv->Changed = OnSeekSliderChange;
     LbTime=new Label(screenX-238,5,screenX-82,25,MWDPlayer,"00h00m00s/00h00m00s",AJ_LEFT);
-    WidgetAudioVolume = new GraphBox(screenX-81,3,screenX-38,26,MWDPlayer,RGB16(230,231,236));
+    LbTime->OnMsClick = OnMsClickSwitchProgressTimeMode;
+    WidgetAudioVolume = new GraphBox(screenX-81,4,screenX-38,26,MWDPlayer, WH->m_GraphCtxt->WinGris); // RGB16(230,231,236));
+    WidgetAudioVolume->GraphBoxDraw = GphBDrawVolume;
+    WidgetAudioVolume->OnMsDown = OnMsDownGphBVolume;
+    WidgetAudioVolume->OnMsDrag = OnMsDragGphBVolume;
+    WidgetAudioVolume->Redraw();
     BtExit=new ImgButton(screenX-36,3,screenX-10,27,MWDPlayer,ImgExit);
     BtExit->Click=OnMenuExit; // set click handler
     // menu
@@ -830,6 +864,10 @@ bool StringToBool(char *str) {
 
 void UpdatePlayTime() {
   unsigned int iplayTime=0,videoAdv=0;
+  unsigned int iremainTime=0;
+  unsigned int itotalTime=0;
+  char str_progressT[32]="";
+  char str_remainT[32]="";
 
   videoAdv=0;
   if (VidOpen) {
@@ -842,11 +880,28 @@ void UpdatePlayTime() {
         }
         else
           videoAdv=0;
+        iremainTime = (unsigned int)(VideoTime)-iplayTime;
+        itotalTime = (unsigned int)(VideoTime);
     } else if (VidOpenHasAudio) {
-         iplayTime = (int)(((double)(VoiceSampleSize) * (double)(countRingQueued + countRingAdd + countRingOverWritten)) /(double)pAudioCodecCtx->sample_rate);
-         videoAdv = ((double)(iplayTime) * 100.0) / (double)(AudioTime);
+        iplayTime = (int)(((double)(VoiceSampleSize) * (double)(countRingQueued + countRingAdd + countRingOverWritten)) /(double)pAudioCodecCtx->sample_rate);
+        videoAdv = ((double)(iplayTime) * 100.0) / (double)(AudioTime);
+        iremainTime = (unsigned int)(AudioTime)-iplayTime;
+        itotalTime = (unsigned int)(AudioTime);
     }
-    timeToStr(iplayTime, playTime, 127);
+    switch (ProgressTimeMode) {
+        case 0: // simple progress
+            timeToStr(iplayTime, playTime, 127);
+            break;
+        case 1: // remaining
+            timeToStr(iremainTime, str_remainT, 31);
+            sprintf(playTime,"-%s",str_remainT);
+            break;
+        case 2: // progress/total
+            timeToStr(iplayTime, str_progressT, 31);
+            timeToStr(itotalTime, str_remainT, 31);
+            sprintf(playTime,"%s/%s",str_progressT,str_remainT);
+            break;
+    }
   }
   else {
     sprintf(playTime,"0s");
@@ -918,6 +973,8 @@ void OnMenuAbout() {
     MWAbout->Enable(); // set as the active window
 }
 
+// GphBVideo events
+
 void GphBDrawVideo(GraphBox *Me) {
 
    // opened video ?
@@ -946,6 +1003,61 @@ void GphBScanVideo(GraphBox *Me) {
      redrawVid=0;
    }
 }
+
+// WidgetAudioVolume events
+void GphBDrawVolume(GraphBox *Me) {
+    ClearSurf16(WH->m_GraphCtxt->WinGris);//RGB16(230,231,236));
+    if (!SoundEnabled)
+        return;
+    int viewWidth = Me->VGraphBox.MaxX - Me->VGraphBox.MinX - 6;
+    int viewHeight = Me->VGraphBox.MaxY - Me->VGraphBox.MinY - 6;
+    if (viewWidth < 10 || viewHeight < 10)
+        return;
+    int posVolX = ((MasterAudioVolume * viewWidth) / 255) + 3 + Me->VGraphBox.MinX;
+    int posVolY = Me->VGraphBox.MaxY - 1;
+
+    int ListPtsRGB[18] = {
+        // X     ,    Y,                                              Z,      U,      V,  COL
+        3 + Me->VGraphBox.MinX, Me->VGraphBox.MinY + 2,               0,      0,      0,  RGB16(230,231,236),
+        3 + viewWidth + Me->VGraphBox.MinX, Me->VGraphBox.MinY + 2,   0,      0,      0,  RGB16(255,0,0),
+        3 + viewWidth + Me->VGraphBox.MinX, Me->VGraphBox.MaxY - 6,   0,      0,      0,  RGB16(255,0,0)  };
+    int PolyListPtRGB[4] = { 3, (int)&ListPtsRGB[0], (int)&ListPtsRGB[6], (int)&ListPtsRGB[12]};
+    int ListPts[6] = {
+        // X     ,    Y,
+        posVolX-3, posVolY,
+        posVolX+3, posVolY,
+        posVolX, posVolY - 3};
+    int PolyListPt[4] = { 3, (int)&ListPts[0], (int)&ListPts[2], (int)&ListPts[4]};
+
+    Poly16(&PolyListPtRGB, NULL, POLY16_RGB|POLY16_FLAG_DBL_SIDED, RGB16(0,0,0));
+    Poly16(&PolyListPt, NULL, POLY16_SOLID|POLY16_FLAG_DBL_SIDED, RGB16(0,0,0));
+}
+
+void OnMsDownGphBVolume(int x, int y) {
+    if (!SoundEnabled)
+        return;
+    int viewWidth = WidgetAudioVolume->VGraphBox.MaxX - WidgetAudioVolume->VGraphBox.MinX - 6;
+
+    if (x<=3) // set volume to min
+        MasterAudioVolume = 0;
+    else if (x>=viewWidth+3) // set volume to min
+        MasterAudioVolume = 255;
+    else {
+        MasterAudioVolume = ((x - 3) * 255) / viewWidth;
+    }
+    SndDrv->SetMasterVolume(MasterAudioVolume, MasterAudioVolume);
+    WidgetAudioVolume->Redraw();
+}
+
+void OnMsDragGphBVolume(int x, int y, bool MsIn) {
+    if (!SoundEnabled)
+        return;
+    if (MsIn)
+        OnMsDownGphBVolume(x, y);
+}
+
+
+
 void OnBtPlayClick() {
 
   OpenVid(CurVidFile.StrPtr);
@@ -987,6 +1099,10 @@ void OnMenuLoop() {
 
 void OnMenuFrameDrop() {
     DropFrames = !DropFrames;
+}
+
+void OnMsClickSwitchProgressTimeMode() {
+    ProgressTimeMode = (ProgressTimeMode+1)%3;
 }
 
 void OnSeekSliderChange(int val) {
@@ -1037,9 +1153,9 @@ void GphBDrawAbout(GraphBox *Me) {
    SetTextCol(WH->m_GraphCtxt->WinBlanc);
    if (!AboutDebugInfo) OutText16Mode("\n", AJ_MID);
    FntCol=RGB16(0,255,0); // green
-   OutText16Mode("DUGL Player 1.0 Alpha 4 - DOS Audio/Video Player\n", AJ_MID);
+   OutText16Mode("DUGL Player 1.0 Alpha4 - DOS Audio/Video Player\n", AJ_MID);
    FntCol=RGB16(255,255,255); // white
-   OutText16Mode("(C) By FFK 12 April 2026\n\n", AJ_MID);
+   OutText16Mode("(C) By FFK 13 April 2026\n\n", AJ_MID);
    OutText16Mode("Developped using :\n", AJ_MID);
    FntCol=RGB16(255,255,0); // yellow
    OutText16ModeFormat(AJ_MID, midText, 255,"DUGL %s\n",DUGL_VERSION);
@@ -1188,6 +1304,13 @@ void LoadConfig()
                     else if(strcmp(infoName,"FullScrShowFps") == 0  && ListInfoIndex->countStrings >= 1) {
                       FullScrShowFps = StringToBool(ListInfoIndex->ListStrings[0]);
                     }
+                    else if(strcmp(infoName,"ProgressTimeMode") == 0  && ListInfoIndex->countStrings >= 1) {
+                      tempInt = atoi(ListInfoIndex->ListStrings[0]);
+                      if (tempInt >= 0 && tempInt <= 2)
+                        ProgressTimeMode = tempInt;
+                      else
+                        ProgressTimeMode = 0;
+                    }
                     else if(strcmp(infoName,"EnableSound") == 0  && ListInfoIndex->countStrings >= 1) {
                       SoundEnabled = StringToBool(ListInfoIndex->ListStrings[0]);
                     }
@@ -1280,8 +1403,10 @@ int OpenVid(char *FileName)
        kindVidOpened = 4;
     if (kindVidOpened > 0) {
       if (!VidOpenHasVideo) {
-         if (CreateSurf(&Sframe16, GphBVideo->VGraphBox.MaxX-GphBVideo->VGraphBox.MinX+1, GphBVideo->VGraphBox.MaxY-GphBVideo->VGraphBox.MinY+1, 16)) {
+         if (CreateSurf(&Sframe16, 500, GphBVideo->VGraphBox.MaxY-GphBVideo->VGraphBox.MinY+1, 16)) {
             SetOrgSurf(Sframe16, 0, Sframe16->ResV/2);
+            DgSetCurSurf(Sframe16);
+            ClearSurf16(RGB16(0,0,0));
          }
       }
     }
@@ -1841,16 +1966,6 @@ int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop) {
     return 0;
 }
 
-static int cptLog = 0;
-
-#define FLOG(formatMsg, ...) { \
-    FILE *LOGFILE = fopen("./log.txt", "at");\
-    if (LOGFILE!=NULL) {\
-        fprintf(LOGFILE, formatMsg, __VA_ARGS__);\
-        fclose(LOGFILE);\
-        cptLog++; \
-    }\
-}
 
 
 
@@ -2002,6 +2117,11 @@ int SeekFrameFFMPEG(DgSurf *S16, unsigned int FrameNum) {
     int64_t target_pts = (int64_t)(FrameNum * (1.0 / av_q2d(video_stream->avg_frame_rate)) / av_q2d(video_stream->time_base));
     av_seek_frame(pFormatCtx, videoStreamIndex, target_pts, AVSEEK_FLAG_BACKWARD);
     avcodec_flush_buffers(pVideoCodecCtx);
+    if (VidOpenHasAudio) {
+        av_seek_frame(pAudioFormatCtx, videoStreamIndex, target_pts, AVSEEK_FLAG_BACKWARD);
+        avcodec_flush_buffers(pAudioCodecCtx);
+        audioRingCount = 0; // invalidate audio ring buffer contents
+    }
     return GetNextFrameFFMPEG(S16,0);
 }
 

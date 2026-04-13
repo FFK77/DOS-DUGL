@@ -30,6 +30,7 @@
 					<Add option="-O2" />
 					<Add option="-Weffc++" />
 					<Add option="-Wextra" />
+					<Add option="-std=c99" />
 					<Add option="-m32" />
 					<Add directory="../../../dugl" />
 					<Add directory="../../../duglplus" />
