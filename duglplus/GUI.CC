@@ -584,7 +584,7 @@ void Child::Scan() {
        if (LastMsXDrag != MsX || LastMsYDrag != MsY) {
          LastMsXDrag = MsX;
          LastMsYDrag = MsY;
-         if (OnMsDrag != NULL) OnMsDrag(MsX-XN, MsY-YN, MsIn);
+         if (OnMsDrag != NULL) OnMsDrag(MsX-XN-XC1, MsY-YN-YC1, MsIn);
        }
    }
    if (m_GraphCtxt->WinFreeMs && (MsButton&MS_LEFT_BUTT) && MsIn) {
@@ -595,12 +595,15 @@ void Child::Scan() {
        LastMsXDrag = MsX;
        LastMsYDrag = MsY;
        MsDown=1;
-       if (OnMsDown!=NULL) OnMsDown(MsXDown-XN, MsYDown-YN);
+       if (OnMsDown!=NULL) {
+         OnMsDown(MsXDown-XN-XC1, MsYDown-YN-YC1);
+       }
      }
    } else DblClick=0;
    if ((!m_GraphCtxt->WinFreeMs) && (!(MsButton&MS_LEFT_BUTT)) && MsDown) {
      if (!MsDownD) {
         MsDownD=1;
+        DblClick=0;
         LastMsDownTime=DgTime;
      }
      else
@@ -608,6 +611,8 @@ void Child::Scan() {
          DblClick=((DgTime-LastMsDownTime)<DgTimerFreq/3 && MsIn);
          if (DblClick && OnMsDoubleClick!=NULL) OnMsDoubleClick();
          MsDownD=0;
+       } else {
+         DblClick=0;
        }
      LostMsDown=1;
      // don't call MsClick if MsDoubleClick called
@@ -615,12 +620,14 @@ void Child::Scan() {
         OnMsClick();
      m_GraphCtxt->WinFreeMs=1;
      MsDown=0;
-     if (OnMsUp!=NULL) OnMsUp(MsXDown-XN, MsYDown-YN, MsIn);
+     if (OnMsUp!=NULL) {
+        OnMsUp(MsXDown-XN-XC1, MsYDown-YN-YC1, MsIn);
+     }
    }
    if (MsDownD && DgTimerFreq && (DgTime-LastMsDownTime)>=DgTimerFreq/2) MsDownD=0;
    if (m_GraphCtxt->WinFreeMs && MsDown) MsDown=0;
-   if (!oldMsIn && MsIn && OnMsIn!=NULL) OnMsIn(MsX-XN, MsY-YN);
-   if (oldMsIn && !MsIn && OnMsOut!=NULL) OnMsOut(MsX-XN, MsY-YN);
+   if (!oldMsIn && MsIn && OnMsIn!=NULL) OnMsIn(MsX-XN-XC1, MsY-YN-YC1);
+   if (oldMsIn && !MsIn && OnMsOut!=NULL) OnMsOut(MsX-XN-XC1, MsY-YN-YC1);
 
    oldMsIn = MsIn;
 }
@@ -1113,6 +1120,7 @@ void Label::Draw() {
 }
 
 void Label::Scan() {
+   Child::Scan();
    if (Text.Changed()) Redraw();
 }
 
