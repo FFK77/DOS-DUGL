@@ -169,7 +169,11 @@ void StartSynch(void *SynchBuff,int *Pos) {
    if (DgTimerFreq==0 || SynchBuff==NULL) return;
    ST=((SynchTime*)(SynchBuff));
    // start Sync
-   ST->LastPos=0.0;
+   if (Pos!=NULL) {
+      ST->LastPos=(float)(*Pos);
+   } else {
+      ST->LastPos=0.0;
+   }
    ST->FirstTimeValue=DgTime;
    ST->LastTimeValue=ST->FirstTimeValue;
    bzero(&ST->TimeHst[0],SYNCH_HST_SIZE*sizeof(unsigned int));
@@ -179,7 +183,6 @@ void StartSynch(void *SynchBuff,int *Pos) {
    ST->LastSynchNull=0;
    ST->NbNullSynch=0;
    ST->LastNbNullSynch=0;
-   if (Pos!=NULL) *Pos=0;
 }
 
 float SynchAccTime(void *SynchBuff) {
