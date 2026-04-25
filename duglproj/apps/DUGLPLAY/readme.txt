@@ -1,10 +1,10 @@
-DUGL Player 1.0 Alpha 3 - released 2026-03-26
+DUGL Player 1.0 Alpha 5 - released 2026-04-25
 =============================================
 
 About
 -----
 
-DUGL Player is a GUI video player for DOS systems.
+DUGL Player is a GUI video/audio player for DOS systems.
 
 License
 -------
@@ -26,7 +26,7 @@ at the following conditions :
 System requirements
 -------------------
 
-- DOS
+- DOS or Compatible OS including emulated 
 - CPU with MMX support, minimum frequency for playing in real time
   depends from played file, especially video frame size and rate,
   for 640x480 OGG Theora at 30 fps with Vorbis sound 1 GHz is required
@@ -37,25 +37,30 @@ System requirements
 Features
 --------
 
-- Playing video files with or without sound
-- Nice GUI, control by mouse(optional) or keyboard, built-in screenshot feature
+- Playing video/audio files
+- fast forward and rewind using a slider
+- Selecting play speed with ratio 1/2, 1(default), 2, 4
+- Full screen mode
+- Nice GUI, control by mouse(optional) or keyboard, volume widget, built-in screenshot feature
+..
 
 Supported media fileformats
 ---------------------------
 
-Any format supported by current FFMPEG 5.1.2 which is mostly every thing including:
- animated GIF, WEBM, MPEG4, MOV ...
+Any video or audio format supported by current FFMPEG 5.1.2 which is mostly every thing including:
+ animated GIF, WEBM, MPEG4, OGG, MOV, MP3, MP2 ...
 
 
 Missing Features/TODO
 ---------------------
 
 - Keep Aspect Ratio
-- playing video at full res : currently high-res videos are downsampled to 640x480
 - Detect/handle video orientation
 - Real Time zooming
 - Better GUI specially config dialog and better file selection Dialog
-..
+- Add in full screen mode a toolbar that shows when mouse is on bottom, with main functions including stop/play, speed, 
+  sound volume and fast forward/rewind slider
+- Improve Audio/Video synching ..
 
 Keyboard shortcuts :
 --------------------
@@ -111,17 +116,33 @@ History:
 28 february 2026: 1.0 alpha 1
 
 2 march 2026 : 1.0 alpha 2
-
 - Add experimental seeking using the horizontal slider. (video is paused once user start seeking)
 - Save/restore working directory at player startup/close to avoid changing
   current user directory.
 - several fixes and cleanup
 
 26 march 2026 : 1.0 alpha 3
-
 - Add experimental sound decoding/support using Sound Blaster 16 driver
 - Improve config file with new sound audio paramters, true|false to enable/disable,
 - Add reverting to 640x480 if selected config file video resolution isn't available ...
 - Keyboard 'P' now pause continue playing current video
 
+13 April 2026: 1.0 alpha 4
+- Implement decoding for audio only files
+- Add master volume control widget
+- Implement the three usual time progress modes (progress, remaining time, progress / total time)
+  user can switch between modes by mouse clicking on the time
+- Implement seeking of audio track with video track
+- Improve playing mode widget, now image Button (looping or single play)
+- severals parameters added to config file
+- Improved sound quality, bug fixes
+
+25 April 2026: 1.0 alpha 5
+- Add/implement new button to select playing speed with ratio 1/2, 1(default), 2, 4
+- Implement audio only files fast forward/rewind with slider
+- Improve GUI design with progress slider at full window width and increasing precision to 1000 (was 100)
+- Add possibility display audio curve for audio only files, with additional config file fields 
+  (enable; background color; curve color; render mode: blit|transluent)
+- Revert time display to hh:mm:ss instead of xxhxxmxxs
+- Improve Open Dialog File filters
  

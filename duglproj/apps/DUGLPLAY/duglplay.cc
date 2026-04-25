@@ -85,7 +85,14 @@
     - Improve playing mode widget, now image Button (looping or single play)
     - severals parameters added to config file
     - Improved sound quality, bug fixes
-    ...
+    25 April 2026: 1.0 alpha 5
+    - Add/implement new button to select playing speed with ratio 1/2, 1(default), 2, 4
+    - Implement audio only files fast forward/rewind with slider
+    - Improve GUI design with progress slider at full window width and increasing precision to 1000 (was 100)
+    - Add possibility display audio curve for audio only files, with additional config file fields
+      (enable; background color; curve color; render mode: blit|transluent)
+    - Revert time display to hh:mm:ss instead of xxhxxmxxs
+    - Improve Open Dialog File filters
 */
 
 #include <stdio.h>
@@ -185,7 +192,8 @@ bool VidOpen=false,
     AudioEnabled = false,
     SoundEnabled = true,
     PlayLooping = false,
-    UseOldFFMPEGResampler = true;
+    UseOldFFMPEGResampler = true,
+    DisplaySoundCurve = true;
 int ProgressTimeMode = 2;
 float VideoFps = 0.0f;
 float VideoTime = 0.0f;
@@ -198,8 +206,15 @@ int framenum,
     frameskipped=0;
 int DefTypeOpen=0;
 int kindVidOpened = 0; // 0 : none, 4: FFMPEG
+int CountSpeedID = 4;
+int CurrentSpeedID = 1;
+float CurrentSpeedCoef = 1.0f;
+int DisplaySoundBackCol = RGB16(0,0,0),
+    DisplaySoundCurveCol = RGB16(255,255,255),
+    DisplaySoundMode = 0,
+    DisplaySoundModeTransLevel = 10;
 
-DgSurf *Sframe16; // Surf where the 16bpp video frame will be stored
+DgSurf *Sframe16 = NULL, *Slastframe16= NULL; // Surf where the 16bpp video frame will be stored
 
 unsigned char *uFinal = NULL;
 unsigned char *vFinal = NULL;
@@ -258,10 +273,14 @@ int audioRingCount = 0;
 int audioFrameSamples = 0;
 int audioLastAddIdx = -1;
 int audioLastQueueIdx = -1;
+int audioLastCurveIdx = -1;
 int countRingQueued = 0;
 int countRingAdd = 0;
 int countRingOverWritten = 0;
 int curVoicePos = 0;
+int iInputSampleRate = 0;
+int iOutputSampleRate = 0;
+
 SoundDRV *SndDrv = NULL;
 void *SndBuff = NULL;
 int retOpenAudio = 0;
@@ -293,6 +312,8 @@ bool CreatePrepAudioRingDVoices();
 void UpdateAudioRingDVoicesSamplingSpeed(int newSampling);
 // Destroy/Unprepare Audio Ring DVoices
 bool DestroyUnprepAudioRingDVoices();
+// render last audio
+void RenderAudioLastAdd();
 
 
 // return 0 if success, code error if failed
@@ -305,6 +326,8 @@ int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop);
 int GetNextAudioFrameFFMPEG();
 // try to seek to FrameNum return 1 successfull, 0 else
 int SeekFrameFFMPEG(DgSurf *S16, unsigned int FrameNum);
+// try to seek audio stream to targetTimeSeconds return 1 successfull, 0 else
+int SeekAudioFFMPEG(float targetTimeSeconds);
 // free any memory ressources allocated by OpenFFMPEG
 void DestroyFFMPEG();
 // close an opened video
@@ -328,16 +351,18 @@ char SynchBuff[SIZE_SYNCH_BUFF];
 // Windows Handler
 WinHandler *WH;
 // Main window -------------------------------
-String sMainWinName("DUGL Player 1.0 alpha4");
+String sMainWinName("DUGL Player 1.0 alpha5");
 MainWin *MWDPlayer;
 GraphBox *GphBVideo;
 Menu *MWMn;
-ImgButton *BtPlay,*BtPauseCont, *BtPlayMode,*BtExit;
+ImgButton *BtPlay,*BtPauseCont,*BtPlaySpeed, *BtPlayMode,*BtExit;
 GraphBox *WidgetAudioVolume;
 Label *LbTime;
 HzSlider *HSldAdv;
 
 DgSurf *ImgPlay,*ImgExit, *ImgLoop, *ImgPlayOnce, *ImgPCont;
+
+DgSurf *TImgsSpeed[4] = { NULL, NULL, NULL, NULL };
 
 // glabal var
 int redrawVid=1;
@@ -357,6 +382,7 @@ void OnMsDownGphBVolume(int x, int y);
 void OnMsDragGphBVolume(int x, int y, bool MsIn);
 
 void OnBtPlayClick();
+void OnBtPlaySpeedClick();
 void OnBtPlayModeClick();
 void OnMsClickSwitchProgressTimeMode();
 void OnSeekSliderChange(int val);
@@ -364,11 +390,11 @@ void OnSeekSliderChange(int val);
 // screen shot file name
 char *scrFileName="DUGLPLYR.BMP";
 // file filer string
-char *TSFBName[]={ "All supported Videos",
-     "MPEG1/2/4", "Theora/Ogg/Ogv", "YUV4MPEG", "All Files(*.*)" };
-char *TSFBMask[]={ "*.mpg|*.mpeg|*.m2v|*.m1v|*.mpe|*.mpv|*.dat|*.ogv|*.ogg|*.oga|*.y4m|*.mp4|*.avi|*.mov|*.wmv|*.flv|*.webm|*.3gp|*.vob",
-     "*.mpg|*.mpeg|*.m2v|*.m1v|*.mpe|*.mpv|*.dat|*.mp4|*.avi|*.mov|*.wmv", "*.ogv|*.ogg|*.oga", "*.y4m", "*.*" };
-ListString LSMpgName(5,TSFBName),LSMpgMask(5,TSFBMask);
+char *TSFBName[]={ "All supported Files",
+     "All Supported Video", "All Supported Audio", "All Files(*.*)" };
+char *TSFBMask[]={ "*.mpg|*.mpeg|*.m2v|*.m1v|*.mpe|*.mpv|*.dat|*.ogv|*.ogg|*.y4m|*.mp4|*.avi|*.mov|*.wmv|*.flv|*.webm|*.3gp|*.vob|*.jpg|*.jpeg|*.gif|*.bmp|*.png|*.oga|*.wav|*.mp3|*.mp2|*.aac|*.wma|*.m4a|*.flac",
+     "*.mpg|*.mpeg|*.m2v|*.m1v|*.mpe|*.mpv|*.dat|*.ogv|*.ogg|*.y4m|*.mp4|*.avi|*.mov|*.wmv|*.flv|*.webm|*.3gp|*.vob", "*.ogg|*.oga|*.wav|*.mp3|*.mp2|*.aac|*.wma|*.m4a|*.flac", "*.*" };
+ListString LSMpgName(4,TSFBName),LSMpgMask(4,TSFBMask);
 
 // Main Menu -------
 NodeMenu TNM[]= {
@@ -452,6 +478,19 @@ int main (int argc, char ** argv) {
     if (LoadBMP16(&ImgLoop,"gfx/loop.bmp")==0) {
       printf("Error loading loop.bmp\n"); exit(-1);
     }
+    if (LoadBMP16(&TImgsSpeed[0],"gfx/speed12.bmp")==0) {
+      printf("Error loading loop.bmp\n"); exit(-1);
+    }
+    if (LoadBMP16(&TImgsSpeed[1],"gfx/speed.bmp")==0) {
+      printf("Error loading loop.bmp\n"); exit(-1);
+    }
+    if (LoadBMP16(&TImgsSpeed[2],"gfx/speed2.bmp")==0) {
+      printf("Error loading loop.bmp\n"); exit(-1);
+    }
+    if (LoadBMP16(&TImgsSpeed[3],"gfx/speed4.bmp")==0) {
+      printf("Error loading loop.bmp\n"); exit(-1);
+    }
+
 
     if (!LoadKbMAP(&KM,keybMapFileName)) {
       printf("Error loading keyboard map '%s'\n", keybMapFileName); exit(-1); }
@@ -492,7 +531,7 @@ int main (int argc, char ** argv) {
     }
     if (argc>=2) {
       if (OpenVid(argv[1])!=0) {
-        printf ("error opening video file: \"%s\".\n", argv[1]);
+        printf ("error opening video/audio file: \"%s\".\n", argv[1]);
         exit(-1);
       }
       else
@@ -526,30 +565,32 @@ int main (int argc, char ** argv) {
     WH = new WinHandler(screenX,screenY,16,0xF|(0x1F<<5));
     //---- Main Window
     MWDPlayer= new MainWin(0,0,screenX,screenY,sMainWinName.StrPtr,WH);
-    GphBVideo= new GraphBox(2,30,screenX-10,screenY-50,MWDPlayer,WH->m_GraphCtxt->WinGris);
+    GphBVideo= new GraphBox(2,30+14,screenX-10,screenY-50,MWDPlayer,WH->m_GraphCtxt->WinGris);
     // set drawing handler
     GphBVideo->GraphBoxDraw=GphBDrawVideo;
     // set scan handler (enable redraw when needed)
     GphBVideo->ScanGraphBox=GphBScanVideo;
     GphBVideo->Redraw();
     // buttons
-    BtPlay=new ImgButton(2,3,29,27,MWDPlayer,ImgPlay);
+    BtPlay=new ImgButton(2,3+15,29,27+15,MWDPlayer,ImgPlay);
     BtPlay->Click=OnBtPlayClick; // set click handler
-    BtPauseCont=new ImgButton(32,3,57,27,MWDPlayer,ImgPCont);
+    BtPauseCont=new ImgButton(32,3+15,57,27+15,MWDPlayer,ImgPCont);
     BtPauseCont->Click=OnMenuPauseCont; // set click handler
-    BtPlayMode=new ImgButton(60,3,85,27,MWDPlayer,(!PlayLooping)?ImgPlayOnce:ImgLoop);
+    BtPlaySpeed = new ImgButton(60,3+15,85,27+15,MWDPlayer,TImgsSpeed[CurrentSpeedID]);
+    BtPlaySpeed->Click = OnBtPlaySpeedClick;
+    BtPlayMode=new ImgButton(60+28,3+15,85+28,27+15,MWDPlayer,(!PlayLooping)?ImgPlayOnce:ImgLoop);
     BtPlayMode->Click= OnBtPlayModeClick;
-    HSldAdv=new HzSlider(90,screenX-240,7,MWDPlayer,0,100);
-    HSldAdv->Changed = OnSeekSliderChange;
-    LbTime=new Label(screenX-238,5,screenX-82,25,MWDPlayer,"00h00m00s/00h00m00s",AJ_LEFT);
+    LbTime=new Label(screenX-238,5+13,screenX-82,25+13,MWDPlayer,"",AJ_RIGHT);
     LbTime->OnMsClick = OnMsClickSwitchProgressTimeMode;
-    WidgetAudioVolume = new GraphBox(screenX-81,4,screenX-38,26,MWDPlayer, WH->m_GraphCtxt->WinGris); // RGB16(230,231,236));
+    WidgetAudioVolume = new GraphBox(screenX-81,19,screenX-38,41,MWDPlayer, WH->m_GraphCtxt->WinGris);
     WidgetAudioVolume->GraphBoxDraw = GphBDrawVolume;
     WidgetAudioVolume->OnMsDown = OnMsDownGphBVolume;
     WidgetAudioVolume->OnMsDrag = OnMsDragGphBVolume;
     WidgetAudioVolume->Redraw();
-    BtExit=new ImgButton(screenX-36,3,screenX-10,27,MWDPlayer,ImgExit);
+    BtExit=new ImgButton(screenX-36,3+15,screenX-10,27+15,MWDPlayer,ImgExit);
     BtExit->Click=OnMenuExit; // set click handler
+    HSldAdv=new HzSlider(2,screenX-8,0,MWDPlayer,0,1000);
+    HSldAdv->Changed = OnSeekSliderChange;
     // menu
     MWMn = new Menu(MWDPlayer,&TNM[0]); // menu
     // ---- About window
@@ -604,7 +645,6 @@ int main (int argc, char ** argv) {
               }
 
               if (audioRingCount > 0) {
-
                 if (audioLastAddIdx == -1) {
                     AddVoice(audioRing[audioRingStart], 0, true);
                     audioLastAddIdx = audioRingStart;
@@ -625,6 +665,23 @@ int main (int argc, char ** argv) {
                     }
                 }
               }
+              // handle curve display
+              if (DisplaySoundCurve && !VidOpenHasVideo) {
+                 bool renderCurve = false;
+                 if (audioLastCurveIdx == -1) {
+                    if (audioLastAddIdx != -1) {
+                        audioLastCurveIdx = audioLastAddIdx;
+                        renderCurve = true;
+                    }
+                 } else if (audioLastAddIdx != -1 && audioLastCurveIdx != audioLastAddIdx) {
+                    audioLastCurveIdx = audioLastAddIdx;
+                    renderCurve = true;
+                 }
+                 if (renderCurve) {
+                    RenderAudioLastAdd();
+                    redrawVid=1;
+                 }
+              }
            }
 
           if (VidOpenHasVideo && !VidVideoEnded) {
@@ -643,6 +700,7 @@ int main (int argc, char ** argv) {
                  } else {
                     if (GetNextFrame(Sframe16,0)==1) {
                        redrawVid=1;
+
                        if (!FrameAvlbl) FrameAvlbl=true;
                        frameskipped+=PosSynch-framenum-1; // we are too slow ? :(
                     } else {
@@ -679,12 +737,13 @@ int main (int argc, char ** argv) {
               CloseVid();
         }
       }
+
       // GUI
       if (EnableGUI) {
         // force playing also if menu are active
         if (VidOpen && (!VidEnded) &&
             (MWDPlayer->ActivMenu==1 || MWDPlayer->Focus==0)) {
-           redrawVid=1;
+           //redrawVid=1;
            GphBVideo->Redraw();
         }
         // scan the GUI for events
@@ -874,17 +933,18 @@ void UpdatePlayTime() {
     if (VidOpenHasVideo) {
         iplayTime=(unsigned int)(float(framenum-frameskipped)/VideoFps);
         if (videoFramesCount>0) {
-          videoAdv=(unsigned int)((double)(framenum-frameskipped)*100.0 / (double)(videoFramesCount));
+          videoAdv=(unsigned int)((double)(framenum-frameskipped)*1000.0 / (double)(videoFramesCount));
         } else if(sizeVidFile>0) {
-          videoAdv=(unsigned int)((((double)readVidFileBytes)*100.0) / (double)(sizeVidFile));
+          videoAdv=(unsigned int)((((double)readVidFileBytes)*1000.0) / (double)(sizeVidFile));
         }
         else
           videoAdv=0;
         iremainTime = (unsigned int)(VideoTime)-iplayTime;
         itotalTime = (unsigned int)(VideoTime);
     } else if (VidOpenHasAudio) {
-        iplayTime = (int)(((double)(VoiceSampleSize) * (double)(countRingQueued + countRingAdd + countRingOverWritten)) /(double)pAudioCodecCtx->sample_rate);
-        videoAdv = ((double)(iplayTime) * 100.0) / (double)(AudioTime);
+        iplayTime = (int)(((double)(VoiceSampleSize) * (double)(countRingQueued + countRingAdd + countRingOverWritten)) /(double)iOutputSampleRate);
+
+        videoAdv = ((double)(iplayTime) * 1000.0) / (double)(AudioTime);
         iremainTime = (unsigned int)(AudioTime)-iplayTime;
         itotalTime = (unsigned int)(AudioTime);
     }
@@ -904,7 +964,7 @@ void UpdatePlayTime() {
     }
   }
   else {
-    sprintf(playTime,"0s");
+    playTime[0]='\0';
   }
   if (ignoreSeekSliderChange != 1) {
       ignoreSeekSliderChange = 1;
@@ -979,9 +1039,10 @@ void GphBDrawVideo(GraphBox *Me) {
 
    // opened video ?
    if (VidOpen) {
-      if(FitVideo)
+      if(FitVideo || !VidOpenHasVideo)
       {
-        ResizeViewSurf16(Sframe16, 0, 0);
+         ResizeViewSurf16(Sframe16, 0, 0);
+         return;
       }
       else {
         ClearSurf16(WH->m_GraphCtxt->WinGrisF);
@@ -1063,6 +1124,31 @@ void OnBtPlayClick() {
   OpenVid(CurVidFile.StrPtr);
 }
 
+void OnBtPlaySpeedClick() {
+    int OldPosSynch = 0;
+    CurrentSpeedID = (CurrentSpeedID+1) % CountSpeedID;
+    BtPlaySpeed->SetImage(TImgsSpeed[CurrentSpeedID]);
+    switch (CurrentSpeedID) {
+    case 0:
+        CurrentSpeedCoef = 0.5f;
+        break;
+    case 1:
+        CurrentSpeedCoef = 1.0f;
+        break;
+    case 2:
+        CurrentSpeedCoef = 2.0f;
+        break;
+    case 3:
+        CurrentSpeedCoef = 4.0f;
+        break;
+    }
+    if (VidOpen && VidOpenHasVideo) {
+        OldPosSynch = PosSynch;
+        InitSynch(SynchBuff,&PosSynch,VideoFps*CurrentSpeedCoef);
+        PosSynch = OldPosSynch;
+    }
+}
+
 void OnBtPlayModeClick() {
     PlayLooping = !PlayLooping;
     BtPlayMode->SetImage((!PlayLooping)?ImgPlayOnce:ImgLoop);
@@ -1103,10 +1189,12 @@ void OnMenuFrameDrop() {
 
 void OnMsClickSwitchProgressTimeMode() {
     ProgressTimeMode = (ProgressTimeMode+1)%3;
+    UpdatePlayTime();
 }
 
 void OnSeekSliderChange(int val) {
     unsigned int targetFrame = 0;
+    float targetSecond = 0.0;
     if (!VidOpen) {
         HSldAdv->SetVal(0);
         return;
@@ -1115,15 +1203,27 @@ void OnSeekSliderChange(int val) {
         return;
     switch(kindVidOpened) {
         case 4:
-            targetFrame = val * videoFramesCount / 100;
-            if (SeekFrameFFMPEG(Sframe16, targetFrame) == 1) {
-                //VidPause = true;
-                framenum = targetFrame;
-                frameskipped = 0;
-                redrawVid = 1;
-                UpdatePlayTime();
-            } else { // fail, restore slider position
-                UpdatePlayTime();
+            if (VidOpenHasVideo) {
+                targetFrame = val * videoFramesCount / 1000;
+                if (SeekFrameFFMPEG(Sframe16, targetFrame) == 1) {
+                    //VidPause = true;
+                    framenum = targetFrame;
+                    frameskipped = 0;
+                    redrawVid = 1;
+                    UpdatePlayTime();
+                } else { // fail, restore slider position
+                    UpdatePlayTime();
+                }
+            } else if (VidOpenHasAudio) {
+                targetSecond = (AudioTime * (float)(val)) / 1000.0f;
+                if (SeekAudioFFMPEG(targetSecond) == 1) {
+                    countRingQueued = (targetSecond * (float)iOutputSampleRate) / (double)(VoiceSampleSize);
+                    countRingAdd = 1;
+                    countRingQueued--;
+                    UpdatePlayTime();
+                } else { // fail, restore slider position
+                    UpdatePlayTime();
+                }
             }
             return;
         break;
@@ -1153,9 +1253,9 @@ void GphBDrawAbout(GraphBox *Me) {
    SetTextCol(WH->m_GraphCtxt->WinBlanc);
    if (!AboutDebugInfo) OutText16Mode("\n", AJ_MID);
    FntCol=RGB16(0,255,0); // green
-   OutText16Mode("DUGL Player 1.0 Alpha4 - DOS Audio/Video Player\n", AJ_MID);
+   OutText16Mode("DUGL Player 1.0 Alpha5 - DOS Audio/Video Player\n", AJ_MID);
    FntCol=RGB16(255,255,255); // white
-   OutText16Mode("(C) By FFK 13 April 2026\n\n", AJ_MID);
+   OutText16Mode("(C) By FFK 25 April 2026\n\n", AJ_MID);
    OutText16Mode("Developped using :\n", AJ_MID);
    FntCol=RGB16(255,255,0); // yellow
    OutText16ModeFormat(AJ_MID, midText, 255,"DUGL %s\n",DUGL_VERSION);
@@ -1361,6 +1461,28 @@ void LoadConfig()
                       if (tempFloat >= 0.0f && tempFloat <= 1.0f)
                         OutGainAudioVolume = (int)(255.0f * tempFloat);
                     }
+                    else if(strcmp(infoName,"DisplaySoundCurve") == 0  && ListInfoIndex->countStrings >= 1) {
+                      DisplaySoundCurve = StringToBool(ListInfoIndex->ListStrings[0]);
+                    }
+                    else if(strcmp(infoName,"DisplaySoundBackCol") == 0  && ListInfoIndex->countStrings >= 3) {
+                      DisplaySoundBackCol = RGB16(atoi(ListInfoIndex->ListStrings[0])&0xff,
+                                      atoi(ListInfoIndex->ListStrings[1])&0xff,
+                                      atoi(ListInfoIndex->ListStrings[2])&0xff);
+
+                    }
+                    else if(strcmp(infoName,"DisplaySoundCurveCol") == 0  && ListInfoIndex->countStrings >= 3) {
+                      DisplaySoundCurveCol = RGB16(atoi(ListInfoIndex->ListStrings[0])&0xff,
+                                      atoi(ListInfoIndex->ListStrings[1])&0xff,
+                                      atoi(ListInfoIndex->ListStrings[2])&0xff);
+                    }
+                    else if(strcmp(infoName,"DisplaySoundMode") == 0  && ListInfoIndex->countStrings >= 2) {
+                      tempInt = atoi(ListInfoIndex->ListStrings[0]);
+                      if (tempInt >= 0 && tempInt <= 1) // accept only 0 or 1
+                        DisplaySoundMode = tempInt;
+                      tempInt = atoi(ListInfoIndex->ListStrings[1]);
+                      if (tempInt >= 0 && tempInt <= 31) // [ 0, 31 ] transparency
+                        DisplaySoundModeTransLevel = tempInt;
+                    }
                     else if(strcmp(infoName,"AboutDebugInfo") == 0  && ListInfoIndex->countStrings >= 1) {
                       AboutDebugInfo = StringToBool(ListInfoIndex->ListStrings[0]);
                     }
@@ -1403,10 +1525,16 @@ int OpenVid(char *FileName)
        kindVidOpened = 4;
     if (kindVidOpened > 0) {
       if (!VidOpenHasVideo) {
-         if (CreateSurf(&Sframe16, 500, GphBVideo->VGraphBox.MaxY-GphBVideo->VGraphBox.MinY+1, 16)) {
+         if (CreateSurf(&Sframe16, 500, 500, 16)) {
             SetOrgSurf(Sframe16, 0, Sframe16->ResV/2);
             DgSetCurSurf(Sframe16);
-            ClearSurf16(RGB16(0,0,0));
+            ClearSurf16(DisplaySoundBackCol);
+         }
+
+         if (CreateSurf(&Slastframe16, 500, 500, 16)) {
+            SetOrgSurf(Slastframe16, 0, Slastframe16->ResV/2);
+            DgSetCurSurf(Slastframe16);
+            ClearSurf16(DisplaySoundBackCol);
          }
       }
     }
@@ -1489,6 +1617,7 @@ void CloseVid() {
     videoWidth = 0;
     videoHeight = 0;
     videoFramesCount = 0;
+    audioLastCurveIdx = -1;
     framenum = 0;
     VidOpen = false;
     VidOpenHasAudio = false;
@@ -1559,7 +1688,7 @@ int OpenFFMPEG(char *FileName) {
     framenum=0; // found one frame
     PosSynch=0;
     if (VidOpenHasVideo)
-        InitSynch(SynchBuff,&PosSynch,VideoFps);
+        InitSynch(SynchBuff,&PosSynch,VideoFps*CurrentSpeedCoef);
     else
         InitSynch(SynchBuff,&PosSynch,20.0);
 
@@ -1733,11 +1862,11 @@ int OpenAudioFFMPEG(char *FileName) {
 
                         uint64_t iInputLayout                    = av_get_default_channel_layout(pAudioCodecCtx->ch_layout.nb_channels);
                         enum AVSampleFormat eInputSampleFormat   = (AVSampleFormat)pAudioCodecCtx->sample_fmt;
-                        int         iInputSampleRate             = pAudioCodecCtx->sample_rate;
+                        iInputSampleRate             = pAudioCodecCtx->sample_rate;
 
                         uint64_t iOutputLayout                   = (AudioStereo) ? AV_CH_LAYOUT_STEREO : AV_CH_LAYOUT_MONO;
                         enum AVSampleFormat eOutputSampleFormat  = (Audio16Bits) ? AV_SAMPLE_FMT_S16 : AV_SAMPLE_FMT_U8;
-                        int         iOutputSampleRate            = pAudioCodecCtx->sample_rate;
+                        iOutputSampleRate            = AudioSamplingSpeed; //pAudioCodecCtx->sample_rate;
 
                         AVChannelLayout outLayout;
                         av_channel_layout_default(&outLayout, (AudioStereo) ? 2 : 1);
@@ -1776,7 +1905,7 @@ int OpenAudioFFMPEG(char *FileName) {
                                 if (AudioTime < 0.0f)
                                     AudioTime = 0.0f;
 
-                                UpdateAudioRingDVoicesSamplingSpeed(pAudioCodecCtx->sample_rate);
+                                UpdateAudioRingDVoicesSamplingSpeed(iOutputSampleRate);
 
                                 if (swr_init(au_convert_ctx) != 0) {
                                     audioStreamIndex = -1;
@@ -1828,6 +1957,7 @@ int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop) {
                     av_packet_unref(pkt);
                     if (retfunc == AVERROR(EAGAIN)) {
                         if (nDrops>0) nDrops--;
+                        avcodec_flush_buffers(pVideoCodecCtx);
                         continue;
                     }
                     VidVideoEnded=true; // we reached the end
@@ -2115,14 +2245,32 @@ int SeekFrameFFMPEG(DgSurf *S16, unsigned int FrameNum) {
     if (!VidOpen || videoStreamIndex < 0 )
         return 0;
     int64_t target_pts = (int64_t)(FrameNum * (1.0 / av_q2d(video_stream->avg_frame_rate)) / av_q2d(video_stream->time_base));
-    av_seek_frame(pFormatCtx, videoStreamIndex, target_pts, AVSEEK_FLAG_BACKWARD);
     avcodec_flush_buffers(pVideoCodecCtx);
+    av_seek_frame(pFormatCtx, videoStreamIndex, target_pts, AVSEEK_FLAG_BACKWARD);
     if (VidOpenHasAudio) {
-        av_seek_frame(pAudioFormatCtx, videoStreamIndex, target_pts, AVSEEK_FLAG_BACKWARD);
         avcodec_flush_buffers(pAudioCodecCtx);
-        audioRingCount = 0; // invalidate audio ring buffer contents
+        if (av_seek_frame(pAudioFormatCtx, videoStreamIndex, target_pts, AVSEEK_FLAG_BACKWARD) == 0) {
+            VidAudioEnded = false;
+            audioRingCount = 0; // invalidate audio ring buffer contents
+        }
     }
     return GetNextFrameFFMPEG(S16,0);
+}
+
+int SeekAudioFFMPEG(float targetTimeSeconds) {
+    if (!VidOpen || videoStreamIndex >= 0 )
+        return 0;
+
+    if (VidOpenHasAudio) {
+        int64_t target_ts = av_rescale_q(targetTimeSeconds * AV_TIME_BASE, AV_TIME_BASE_Q, audio_stream->time_base);
+        avcodec_flush_buffers(pAudioCodecCtx);
+        if (av_seek_frame(pAudioFormatCtx, audioStreamIndex, target_ts, AVSEEK_FLAG_BACKWARD)== 0) {
+            VidAudioEnded = false;
+            return 1;
+        }
+        audioRingCount = 0; // invalidate audio ring buffer contents
+    }
+    return 0;
 }
 
 // destroy/free as much as possible ffmpeg allocated mem/ressources
@@ -2155,10 +2303,6 @@ void DestroyVideoFFMPEG() {
 
     if(uFinal) { free(uFinal); uFinal = NULL; }
     if(vFinal) { free(vFinal); vFinal = NULL; }
-    if (Sframe16!=NULL) {
-        DestroySurf(Sframe16);
-        Sframe16 = NULL;
-    }
 }
 
 void DestroyAudioFFMPEG() {
@@ -2208,6 +2352,14 @@ void DestroyFFMPEG() {
 
     DestroyVideoFFMPEG();
     DestroyAudioFFMPEG();
+    if (Sframe16!=NULL) {
+        DestroySurf(Sframe16);
+        Sframe16 = NULL;
+    }
+    if (Slastframe16!=NULL) {
+        DestroySurf(Sframe16);
+        Sframe16 = NULL;
+    }
 
     videoFramesCount = 0;
 }
@@ -2404,10 +2556,11 @@ void CloseSound() {
 
 int AddVoice(DVoice *Vc,int State, bool updateSpeed)
 {
+    int currentSpeed = (int)(CurrentSpeedCoef * (float)Vc->Freq);
     // adjust the speed of the voice if it's speed is inequal with
     // the current sampling speed
-    if (updateSpeed && SndDrv->Cur_SampSpeed!=Vc->Freq) {
-        VP.Speed=(128*Vc->Freq)/SndDrv->Cur_SampSpeed;
+    if (updateSpeed && SndDrv->Cur_SampSpeed!=currentSpeed) {
+        VP.Speed=(128*currentSpeed)/SndDrv->Cur_SampSpeed;
         return SndDrv->AddVoice(Vc,DS_EFF_CHG_SPEED,State,&VP,0);
 	} else // else add as it
         return SndDrv->AddVoice(Vc,0,State,NULL,0);
@@ -2415,10 +2568,11 @@ int AddVoice(DVoice *Vc,int State, bool updateSpeed)
 
 int QueueVoice(DVoice *toQueueVc,DVoice *Vc,int State, bool updateSpeed, bool replaceExisting)
 {
+    int currentSpeed = (int)(CurrentSpeedCoef * (float)Vc->Freq);
     // adjust the speed of the voice if it's speed is inequal with
     // the current sampling speed
-    if (updateSpeed && SndDrv->Cur_SampSpeed!=Vc->Freq) {
-        VP.Speed=(128*Vc->Freq)/SndDrv->Cur_SampSpeed;
+    if (updateSpeed && SndDrv->Cur_SampSpeed!=currentSpeed) {
+        VP.Speed=(128*currentSpeed)/SndDrv->Cur_SampSpeed;
         return SndDrv->QueueVoice(toQueueVc,Vc,DS_EFF_CHG_SPEED,State,&VP,0,replaceExisting);
 	} else // else add as it
         return SndDrv->QueueVoice(toQueueVc,Vc,0,State,NULL,0,replaceExisting);
@@ -2490,13 +2644,78 @@ bool DestroyUnprepAudioRingDVoices() {
     return true;
 }
 
+void RenderAudioLastAdd() {
+    if (!VidOpen || !VidOpenHasAudio || audioLastCurveIdx < 0)
+        return;
+    short *data16 = NULL;
+    unsigned char *data8 = NULL;
+    int step = 0;
+    int startZ = 0;
+    int y0 = 0, y1 = 0;
+    DgSetCurSurf(Sframe16);
+
+    Clear16(DisplaySoundBackCol);
+    switch (audioRing[audioLastCurveIdx]->Type) {
+    case 0: // 8 bits mono
+        data8 = (unsigned char*)(audioRing[audioLastCurveIdx]->Ptr);
+        step = 1;
+        break;
+    case 1: // 8 bits stereo
+        data8 = (unsigned char*)(audioRing[audioLastCurveIdx]->Ptr);
+        step = 2;
+        break;
+    case 2: // 16 bits mono
+        data16 = (short*)(audioRing[audioLastCurveIdx]->Ptr);
+        step = 1;
+        break;
+    case 3: // 16 bits stereo
+        data16 = (short*)(audioRing[audioLastCurveIdx]->Ptr);
+        step = 2;
+        break;
+    }
+    // search for first 0 index
+    if (data8 != NULL) {
+        for (startZ=0; startZ < VoiceSampleSize-500; startZ++) {
+            if (data8[startZ*step] == 128) break;
+        }
+    } else if (data16 != NULL) {
+        for (startZ=0; startZ < VoiceSampleSize-500; startZ++) {
+            if ((data16[startZ*step]>>8) == 0) break;
+        }
+    }
+
+    // render curve
+    if (data8 != NULL) {
+        y0 = (int)(data8[startZ])-128;
+        for (int i=1; i < 500; i++) {
+            y1 = (int)(data8[startZ+i*step])-128;
+            line16(i-1, y0, i, y1, DisplaySoundCurveCol);
+            line16(i-1, y0-1, i, y1+1, DisplaySoundCurveCol);
+            y0 = y1;
+        }
+    } else if (data16 != NULL) {
+        y0 = data16[startZ]>>8;
+        for (int i=1; i < 500; i++) {
+            y1 = data16[startZ+i*step]>>8;
+            line16(i-1, y0, i, y1, DisplaySoundCurveCol);
+            line16(i-1, y0-1, i, y1+1, DisplaySoundCurveCol);
+            y0 = y1;
+        }
+    }
+
+    if (DisplaySoundMode == 1) {
+        SurfCopyTrans16(Slastframe16, Sframe16, DisplaySoundModeTransLevel);
+        SurfCopy(Sframe16, Slastframe16);
+    }
+}
+
 void timeToStr(float timeInSec, char *outStr, size_t outStrSize) {
     if (timeInSec >= 3600) {
-        snprintf(outStr, outStrSize,"%uh%02um%02us", (int)(timeInSec/3600),(int)(timeInSec/60)%60,(int)timeInSec%60);
+        snprintf(outStr, outStrSize,"%u:%02u:%02u", (int)(timeInSec/3600),(int)(timeInSec/60)%60,(int)timeInSec%60);
     } else if (timeInSec >= 60) {
-        snprintf(outStr, outStrSize, "%um%02us", (int)(timeInSec/60)%60,(int)timeInSec%60);
+        snprintf(outStr, outStrSize, "%u:%02u", (int)(timeInSec/60)%60,(int)timeInSec%60);
     } else {
-        snprintf(outStr, outStrSize, "%us",(int)timeInSec);
+        snprintf(outStr, outStrSize, "%u",(int)timeInSec);
     }
 
 }
