@@ -56,17 +56,17 @@ ALIGN 32
 _DgSetCurSurf:
 	ARG	S1, 4
 
-		PUSH		EDI
-		PUSH	    ESI
+		PUSH	      EDI
+		PUSH	      ESI
 
-		MOV			ESI,[EBP+S1]
-		MOV			EAX,[ESI+_ResV-_CurSurf]
-		CMP			EAX,MaxResV
-		JG			.Error
-		MOV			EDI,_CurSurf
+		MOV		ESI,[EBP+S1]
+		MOV		EAX,[ESI+_ResV-_CurSurf]
+		CMP		EAX,MaxResV
+		JG		.Error
+		MOV		EDI,_CurSurf
 		CopySurf
-		OR			EAX,BYTE -1
-		JMP			SHORT .Ok
+		OR		EAX,BYTE -1
+		JMP		SHORT .Ok
 .Error:
 		XOR		EAX,EAX
 .Ok:
@@ -79,7 +79,7 @@ ALIGN 32
 _DgSetSrcSurf:
 	ARG	SrcS, 4
 		PUSH		EDI
-		PUSH	        ESI
+		PUSH	      ESI
 
 		MOV		ESI,[EBP+SrcS]
 		MOV		EDI, _SrcSurf
@@ -91,15 +91,15 @@ _DgSetSrcSurf:
 
 _DgGetCurSurf:
 	ARG	S2, 4
-		PUSH            EDI
-        PUSH            ESI
+		PUSH        EDI
+            PUSH        ESI
 
 		MOV		ESI,_CurSurf
 		MOV		EDI,[EBP+S2]
 		CopySurf
 
-        POP             ESI
-        POP             EDI
+            POP         ESI
+            POP         EDI
 
 	MMX_RETURN
 
@@ -111,7 +111,7 @@ _PutPixel:
 		MOV		CL,[EBP+col]
 		MOV		EAX,[EDX+4]
 		MOV		EDX,[EDX]
-		IMUL	EAX,[_NegScanLine]
+		IMUL	      EAX,[_NegScanLine]
 		ADD		EAX,[_vlfb]
 		MOV		[EAX+EDX],CL
     RETURN
@@ -121,7 +121,7 @@ _GetPixel:
 
 		MOV		EDX,[EBP+PtrGPoint]
 		MOV		ECX,[_NegScanLine]
-		IMUL	ECX,[EDX+4]
+		IMUL	      ECX,[EDX+4]
 		XOR		EAX,EAX
 		MOV		EDX,[EDX]
 		;ADD		ECX,EDX
@@ -161,25 +161,25 @@ _RePoly:
 
             ;CMP         [LastPolyStatus], BYTE 'N'
             MOV         EAX,[EBP+ReTypePoly]
-            MOV			EBX,[EBP+ReColPoly]
+            MOV		EBX,[EBP+ReColPoly]
             ;JE			_Poly16.PasDrawPoly
             TEST		EAX,POLY_FLAG_DBL_SIDED
-            JZ			SHORT .DblSideCheck ; not a double-sided RePoly16 ?
+            JZ		SHORT .DblSideCheck ; not a double-sided RePoly16 ?
 .doRePoly:
             AND         EAX,DEL_POLY_FLAG_DBL_SIDED
             MOV         ECX,[EBP+ReSSurf]
             MOV         [clr],EBX
             MOV         [SSSurf],ECX
             CMP         [_LastPolyStatus], BYTE 'I' ; last render IN ?
-            JNE			.ClipRepoly
-            JMP			[InFillPolyProc+EAX*4]
+            JNE		.ClipRepoly
+            JMP		[InFillPolyProc+EAX*4]
 .ClipRepoly:
-			JMP			[ClFillPolyProc+EAX*4]
+		JMP		[ClFillPolyProc+EAX*4]
 .DblSideCheck:
-			; if this is a reversed dbl_sided then skip repoly
-			CMP			DWORD [PPtrListPt], ReversedPtrListPt
-			JNE			SHORT .doRePoly
-			JMP			_Poly.PasDrawPoly
+		; if this is a reversed dbl_sided then skip repoly
+		CMP		DWORD [PPtrListPt], ReversedPtrListPt
+		JNE		SHORT .doRePoly
+		JMP		_Poly.PasDrawPoly
 
 ;****************************************************************************
 ; struct of PtrlistPt
@@ -210,15 +210,15 @@ _Poly:
 
 		PUSH        ESI
 		PUSH        EBX
-		MOV			ESI,[EBP+PtrListPt]
+		MOV		ESI,[EBP+PtrListPt]
 		PUSH        EDI
 
 		LODSD		; MOV EAX,[ESI];  ADD ESI,4
-        MOV         [_LastPolyStatus], BYTE 'N' ; default no render
-		MOV			[NbPPoly],EAX
-		MOV			ECX,[ESI+8]
-		MOV			EAX,[ESI]
-		MOV			EBX,[ESI+4]
+            MOV         [_LastPolyStatus], BYTE 'N' ; default no render
+		MOV		[NbPPoly],EAX
+		MOV		ECX,[ESI+8]
+		MOV		EAX,[ESI]
+		MOV		EBX,[ESI+4]
 		MOVQ		mm0,[EAX] ; = XP1, YP1
 		MOVQ		mm1,[EBX] ; = XP2, YP2
 		MOVQ		mm2,[ECX] ; = XP3, YP3
@@ -239,36 +239,36 @@ _Poly:
 		MOVD		EBX,mm2 ; = (YP3-YP2)
 		IMUL		EDI,EDX
 		IMUL		EAX,EBX
-		CMP			EAX,EDI
+		CMP		EAX,EDI
 
-		JL			.TstSiDblSide ; si <= 0 alors pas ok
-		JZ			.PasDrawPoly ; ignore poly if first 3 points aligned
+		JL		.TstSiDblSide ; si <= 0 alors pas ok
+		JZ		.PasDrawPoly ; ignore poly if first 3 points aligned
 
 ;****************
 .DrawPoly:
 		; Sauvegarde les parametre et libere EBP
-		MOV			EAX,[EBP+TypePoly]
-		MOV			EBX,[EBP+ColPoly]
+		MOV		EAX,[EBP+TypePoly]
+		MOV		EBX,[EBP+ColPoly]
 		AND     	EAX,DEL_POLY_FLAG_DBL_SIDED16
-		MOV			ECX,[EBP+SSurf]
-		MOV			[PType],EAX
-		MOV			[clr],EBX
-		MOV			[PPtrListPt],ESI
-		MOV			EDI,[NbPPoly]
-		MOV			[SSSurf],ECX
+		MOV		ECX,[EBP+SSurf]
+		MOV		[PType],EAX
+		MOV		[clr],EBX
+		MOV		[PPtrListPt],ESI
+		MOV		EDI,[NbPPoly]
+		MOV		[SSSurf],ECX
 ;-new born determination--------------
-		MOV			EBP,EDI
+		MOV		EBP,EDI
 		MOVQ		mm1,mm3 ; init min = XP1 | YP1
 		MOVQ		mm2,mm3 ; init max = XP1 | YP1
-		DEC			EBP ; = [NbPPoly] - 1
-		DEC			EDI ; " "
+		DEC		EBP ; = [NbPPoly] - 1
+		DEC		EDI ; " "
 .PBoucMnMxXY:
-		MOV			EAX,[ESI+EBP*4] ; = XN, YN
+		MOV		EAX,[ESI+EBP*4] ; = XN, YN
 		MOVQ		mm0,[EAX] ; = XN, YN
 		MOVQ		mm3,mm1 ; = min (x|y)
 		MOVQ		mm4,mm2 ; = max (x|y)
-		PCMPGTD		mm3,mm0 ; mm3 = min(x|y) > (xn|yn)
-		PCMPGTD		mm4,mm0 ; mm4 = max(x|y) > (xn|yn)
+		PCMPGTD	mm3,mm0 ; mm3 = min(x|y) > (xn|yn)
+		PCMPGTD	mm4,mm0 ; mm4 = max(x|y) > (xn|yn)
 		MOVQ		mm5,mm3 ;
 		MOVQ		mm6,mm4 ;
 		PAND		mm3,mm0 ; mm3 = ((xn|yn) < min(x|y)) ? (xn|yn) : (0|0)
@@ -277,10 +277,10 @@ _Poly:
 		PAND		mm6,mm2 ; mm6 = ((xn|yn) < max(x|y)) ? max (x|y) : (0|0)
 		MOVQ		mm1,mm3
 		MOVQ		mm2,mm4
-		DEC			EBP
-		POR			mm1,mm5
-		POR			mm2,mm6
-		JNZ			.PBoucMnMxXY
+		DEC		EBP
+		POR		mm1,mm5
+		POR		mm2,mm6
+		JNZ		.PBoucMnMxXY
 
 		MOVD		EAX,mm2 ; maxx
 		MOVD		ECX,mm1 ; minx
@@ -291,82 +291,82 @@ _Poly:
 
 ; poly clipper ? dans l'ecran ? hors de l'ecran ?
 ; poly clipper ?
-		CMP			EAX,[_MaxX]
-		JG			.PolyClip
-		CMP			EBX,[_MaxY]
-		JG			.PolyClip
-		CMP			ECX,[_MinX]
-		JL			.PolyClip
-		CMP			EDX,[_MinY]
-		JL			.PolyClip
+		CMP		EAX,[_MaxX]
+		JG		.PolyClip
+		CMP		EBX,[_MaxY]
+		JG		.PolyClip
+		CMP		ECX,[_MinX]
+		JL		.PolyClip
+		CMP		EDX,[_MinY]
+		JL		.PolyClip
 
 ; trace Poly non Clipper  **************************************************
 		;JMP		.PolyClip
 
-		MOV			ECX,[_OrgY]	 ; calcule DebYPoly, FinYPoly
-		MOV			EAX,[ESI+EDI*4]
-		ADD			EDX,ECX
-		ADD			EBX,ECX
-		MOV			[DebYPoly],EDX
-		MOV			[FinYPoly],EBX
+		MOV		ECX,[_OrgY]	 ; calcule DebYPoly, FinYPoly
+		MOV		EAX,[ESI+EDI*4]
+		ADD		EDX,ECX
+		ADD		EBX,ECX
+		MOV		[DebYPoly],EDX
+		MOV		[FinYPoly],EBX
 ; calcule les bornes horizontal du poly
-		MOV			EDX,EDI	; EDX compteur de point = NbPPoly-1
+		MOV		EDX,EDI	; EDX compteur de point = NbPPoly-1
 		MOV 		ECX,[EAX]
 		MOV 		EBP,[EAX+4]
-		MOV			[XP2],ECX
-		MOV			[YP2],EBP
+		MOV		[XP2],ECX
+		MOV		[YP2],EBP
 		@InCalculerContour
-		MOV			EAX,[PType]
-        MOV         [_LastPolyStatus], BYTE 'I'; In render
-		JMP			[InFillPolyProc+EAX*4]
+		MOV		EAX,[PType]
+            MOV         [_LastPolyStatus], BYTE 'I'; In render
+		JMP		[InFillPolyProc+EAX*4]
 		;JMP			.PasDrawPoly
 .PolyClip:
 ; hors de l'ecran ? alors fin
-		CMP			EAX,[_MinX]
-		JL			.PasDrawPoly
-		CMP			EBX,[_MinY]
-		JL			.PasDrawPoly
-		CMP			ECX,[_MaxX]
-		JG			.PasDrawPoly
-		CMP			EDX,[_MaxY]
-		JG			.PasDrawPoly
+		CMP		EAX,[_MinX]
+		JL		.PasDrawPoly
+		CMP		EBX,[_MinY]
+		JL		.PasDrawPoly
+		CMP		ECX,[_MaxX]
+		JG		.PasDrawPoly
+		CMP		EDX,[_MaxY]
+		JG		.PasDrawPoly
 
 ; trace Poly Clipper  ******************************************************
-		MOV			EAX,[_MaxY]	; determine DebYPoly, FinYPoly
-		MOV			ECX,[_MinY]
-		CMP			EBX,EAX
-		JL			.PasSupMxY
-		MOV			EBX,EAX
+		MOV		EAX,[_MaxY]	; determine DebYPoly, FinYPoly
+		MOV		ECX,[_MinY]
+		CMP		EBX,EAX
+		JL		.PasSupMxY
+		MOV		EBX,EAX
 .PasSupMxY:
-		CMP			EDX,ECX
-		JG			.PasInfMnY
-		MOV			EDX,ECX
+		CMP		EDX,ECX
+		JG		.PasInfMnY
+		MOV		EDX,ECX
 .PasInfMnY:
-		MOV			EBP,[_OrgY]	  ; Ajuste [DebYPoly],[FinYPoly]
-		MOV			EAX,[ESI+EDI*4]
-		ADD			EDX,EBP
-		ADD			EBX,EBP
-		MOV			[DebYPoly],EDX
-		MOV			[FinYPoly],EBX
-		MOV			EDX,EDI ; ; EDX compteur de point = NbPPoly-1
+		MOV		EBP,[_OrgY]	  ; Ajuste [DebYPoly],[FinYPoly]
+		MOV		EAX,[ESI+EDI*4]
+		ADD		EDX,EBP
+		ADD		EBX,EBP
+		MOV		[DebYPoly],EDX
+		MOV		[FinYPoly],EBX
+		MOV		EDX,EDI ; ; EDX compteur de point = NbPPoly-1
 		MOV 		ECX,[EAX]
 		MOV 		EBP,[EAX+4]
-		MOV			[XP2],ECX
-		MOV			[YP2],EBP
+		MOV		[XP2],ECX
+		MOV		[YP2],EBP
 		MOVD		mm4,ECX
 		MOVD		mm5,EBP		; sauvegarde xp2,yp2
 		@ClipCalculerContour
 
-		CMP			DWORD [DebYPoly],BYTE (-1)
-		MOV			EAX,[PType]
-		JE			.PasDrawPoly
-        MOV         [_LastPolyStatus], BYTE 'C' ; Clip render
-		JMP			[ClFillPolyProc+EAX*4]
+		CMP		DWORD [DebYPoly],BYTE (-1)
+		MOV		EAX,[PType]
+		JE		.PasDrawPoly
+            MOV         [_LastPolyStatus], BYTE 'C' ; Clip render
+		JMP		[ClFillPolyProc+EAX*4]
 .PasDrawPoly:
 
 		POP         EDI
 		POP         EBX
-        POP         ESI
+            POP         ESI
 
 	MMX_RETURN
 
@@ -400,7 +400,7 @@ _PutPixel16:
 		MOV		EAX,[EBP+PtrPoint16]
 		MOV		EDX,[_NegScanLine]
 		MOV		ECX,[EAX]
-		IMUL	EDX,[EAX+4]
+		IMUL	      EDX,[EAX+4]
 		MOV		EAX,[EBP+col16]
 		ADD		EDX,[_vlfb]
 		MOV		[EDX+ECX*2],AX
@@ -412,7 +412,7 @@ _GetPixel16:
 		MOV		EDX,[EBP+PtrGPoint16]
 		MOV		ECX,[_NegScanLine]
 		XOR		EAX,EAX
-		IMUL	ECX,[EDX+4]
+		IMUL	      ECX,[EDX+4]
 		MOV		EDX,[EDX]
 		ADD		ECX,[_vlfb]
 		MOV		AX,[ECX+EDX*2]
@@ -794,14 +794,14 @@ _ResizeViewSurf16:
             NEG         EBP ; revert Horizontal Pnt X
 .NoRevertHz:
             CMP         BH,0
-            MOV			DWORD [HzPntInit],EDX
+            MOV		DWORD [HzPntInit],EDX
             JZ          SHORT .NoRevertVt
             NEG         EAX ; negate PntY
             MOVD        mm7,[SMaxY] ; SMaxX
             MOVD        mm4,[PntInitCPTDbrd+4] ; ((1<<Prec)-1)
 .NoRevertVt:
             MOVD        mm3,EAX ; xmm3  = pntY
-            MOV			[PntPlusX],EBP
+            MOV		[PntPlusX],EBP
 
 .BcResize:
             MOVQ        mm0,mm4
@@ -820,8 +820,8 @@ _ResizeViewSurf16:
             PADDD       mm4,mm3 ; next source hline
             PADDD       mm6,[_NegScanLine] ; next hline
             ;DEC         ECX
-            DEC			DWORD [HzLinesCount]
-            MOV			EDX,DWORD [HzPntInit]
+            DEC		DWORD [HzLinesCount]
+            MOV		EDX,DWORD [HzPntInit]
             JNZ         .BcResize
 
             POP         EDI
@@ -892,18 +892,18 @@ _MaskResizeViewSurf16:
             NEG         EBP ; revert Horizontal Pnt X
 .NoRevertHz:
             CMP         BH,0
-            MOV			DWORD [HzPntInit],EDX
+            MOV		DWORD [HzPntInit],EDX
             JZ          SHORT .NoRevertVt
             NEG         EAX ; negate PntY
             MOVD        mm7,[SMaxY] ; SMaxX
             MOVD        mm4,[PntInitCPTDbrd+4] ; ((1<<Prec)-1)
 .NoRevertVt:
             MOVD		[YT1],mm7
-            MOV			[PntPlusX],EBP
-			MOVD		mm7,[SMask]
+            MOV		[PntPlusX],EBP
+            MOVD		mm7,[SMask]
             MOVD        mm3,EAX ; xmm3  = pntY
-			PUNPCKLWD	mm7,mm7
-			PUNPCKLDQ	mm7,mm7 ; = [QSMask16]
+		PUNPCKLWD	mm7,mm7
+		PUNPCKLDQ	mm7,mm7 ; = [QSMask16]
 			;MOVQ		[QSMask16],mm7
 
 .BcResize:
@@ -920,12 +920,12 @@ _MaskResizeViewSurf16:
 
             @InFastMaskTextHLineDYZ16
 
-			MOV			EAX,[_NegScanLine]
+		MOV		EAX,[_NegScanLine]
             PADDD       mm4,mm3 ; next source hline
             ADD         [HzLineDstAddr],EAX ; next dst hline
             ;DEC         ECX
-            DEC			DWORD [HzLinesCount]
-            MOV			EDX,[HzPntInit]
+            DEC		DWORD [HzLinesCount]
+            MOV		EDX,[HzPntInit]
             JNZ         .BcResize
 
             POP         EDI
@@ -946,44 +946,44 @@ _BlndResizeViewSurf16:
             CopySurf  ; copy the source surface
 
 ; prepare blending
-			MOV       	EAX,[EBP+BResizeColBlnd] ;
-			MOV       	EBX,EAX ;
-			MOV       	ECX,EAX ;
-			MOV       	EDX,EAX ;
-			AND			EBX,[QBlue16Mask] ; EBX = Bclr16 | Bclr16
-			SHR			EAX,24
-			AND			ECX,[QGreen16Mask] ; ECX = Gclr16 | Gclr16
-			AND			AL,BlendMask ; remove any ineeded bits
+            MOV       	EAX,[EBP+BResizeColBlnd] ;
+            MOV       	EBX,EAX ;
+            MOV       	ECX,EAX ;
+            MOV       	EDX,EAX ;
+            AND		EBX,[QBlue16Mask] ; EBX = Bclr16 | Bclr16
+            SHR		EAX,24
+            AND		ECX,[QGreen16Mask] ; ECX = Gclr16 | Gclr16
+            AND		AL,BlendMask ; remove any ineeded bits
 
-			AND			EDX,[QRed16Mask] ; EDX = Rclr16 | Rclr16
-			XOR			ESI,ESI
-			XOR			AL,BlendMask ; 31-blendsrc
-			MOV			SI,AX
-			SHL			ESI,16
-			OR			SI,AX
-			XOR			AL,BlendMask ; 31-blendsrc
+            AND		EDX,[QRed16Mask] ; EDX = Rclr16 | Rclr16
+            XOR		ESI,ESI
+            XOR		AL,BlendMask ; 31-blendsrc
+            MOV		SI,AX
+            SHL		ESI,16
+            OR		SI,AX
+            XOR		AL,BlendMask ; 31-blendsrc
 
-			INC			AL
-			SHR			DX,5 ; right shift red 5bits
-			IMUL		BX,AX
-			IMUL		CX,AX
-			IMUL		DX,AX
-			MOVD		mm7,ESI
-			MOVD		mm3,EBX
-			MOVD		mm4,ECX
-			MOVD		mm5,EDX
-			PUNPCKLWD	mm3,mm3
-			PUNPCKLWD	mm4,mm4
-			PUNPCKLWD	mm5,mm5
-			PUNPCKLDQ	mm7,mm7
-			PUNPCKLDQ	mm3,mm3
-			PUNPCKLDQ	mm4,mm4
-			PUNPCKLDQ	mm5,mm5
+            INC		AL
+            SHR		DX,5 ; right shift red 5bits
+            IMUL		BX,AX
+            IMUL		CX,AX
+            IMUL		DX,AX
+            MOVD		mm7,ESI
+            MOVD		mm3,EBX
+            MOVD		mm4,ECX
+            MOVD		mm5,EDX
+            PUNPCKLWD	mm3,mm3
+            PUNPCKLWD	mm4,mm4
+            PUNPCKLWD	mm5,mm5
+            PUNPCKLDQ	mm7,mm7
+            PUNPCKLDQ	mm3,mm3
+            PUNPCKLDQ	mm4,mm4
+            PUNPCKLDQ	mm5,mm5
 
-			MOVQ		[QBlue16Blend],mm3
-			MOVQ		[QGreen16Blend],mm4
-			MOVQ		[QRed16Blend],mm5
-			;============
+            MOVQ		[QBlue16Blend],mm3
+            MOVQ		[QGreen16Blend],mm4
+            MOVQ		[QRed16Blend],mm5
+            ;============
 
 
             XOR         EBX,EBX ; store flags revert Hz and Vt
@@ -1038,13 +1038,13 @@ _BlndResizeViewSurf16:
             NEG         EBP ; revert Horizontal Pnt X
 .NoRevertHz:
             CMP         BH,0
-            MOV			DWORD [HzPntInit],EDX
+            MOV		DWORD [HzPntInit],EDX
             JZ          SHORT .NoRevertVt
             NEG         EAX ; negate PntY
             MOVD        mm1,[SMaxY] ; SMaxX
             MOVD        mm4,[PntInitCPTDbrd+4] ; ((1<<Prec)-1)
 .NoRevertVt:
-            MOV			[PntPlusX],EBP
+            MOV		[PntPlusX],EBP
             MOVD		[YT1],mm1
             MOVD        mm3,EAX ; xmm3  = pntY
 .BcResize:
@@ -1060,12 +1060,12 @@ _BlndResizeViewSurf16:
 
             @InFastTextBlndHLineDYZ16
 
-			MOV			EAX,[_NegScanLine]
+            MOV		EAX,[_NegScanLine]
             PADDD       mm4,mm3 ; next source hline
             ADD         [HzLineDstAddr],EAX ; next dst hline
             ;DEC         ECX
-            DEC			DWORD [HzLinesCount]
-            MOV			EDX,[HzPntInit]
+            DEC		DWORD [HzLinesCount]
+            MOV		EDX,[HzPntInit]
             JNZ         .BcResize
 
             POP         EDI
@@ -1085,43 +1085,43 @@ _MaskBlndResizeViewSurf16:
             CopySurf  ; copy the source surface
 
 ; prepare blending
-			MOV       	EAX,[EBP+MBResizeColBlnd] ;
-			MOV       	EBX,EAX ;
-			MOV       	ECX,EAX ;
-			MOV       	EDX,EAX ;
-			AND			EBX,[QBlue16Mask] ; EBX = Bclr16 | Bclr16
-			SHR			EAX,24
-			AND			ECX,[QGreen16Mask] ; ECX = Gclr16 | Gclr16
-			AND			AL,BlendMask ; remove any ineeded bits
+            MOV       	EAX,[EBP+MBResizeColBlnd] ;
+            MOV       	EBX,EAX ;
+            MOV       	ECX,EAX ;
+            MOV       	EDX,EAX ;
+            AND		EBX,[QBlue16Mask] ; EBX = Bclr16 | Bclr16
+            SHR		EAX,24
+            AND		ECX,[QGreen16Mask] ; ECX = Gclr16 | Gclr16
+            AND		AL,BlendMask ; remove any ineeded bits
 
-			AND			EDX,[QRed16Mask] ; EDX = Rclr16 | Rclr16
-			XOR			ESI,ESI
-			XOR			AL,BlendMask ; 31-blendsrc
-			MOV			SI,AX
-			SHL			ESI,16
-			OR			SI,AX
-			XOR			AL,BlendMask ; 31-blendsrc
+            AND		EDX,[QRed16Mask] ; EDX = Rclr16 | Rclr16
+            XOR		ESI,ESI
+		XOR		AL,BlendMask ; 31-blendsrc
+		MOV		SI,AX
+		SHL		ESI,16
+		OR		SI,AX
+		XOR		AL,BlendMask ; 31-blendsrc
 
-			INC			AL
-			SHR			DX,5 ; right shift red 5bits
-			IMUL		BX,AX
-			IMUL		CX,AX
-			IMUL		DX,AX
-			MOVD		mm7,ESI
-			MOVD		mm3,EBX
-			MOVD		mm4,ECX
-			MOVD		mm5,EDX
-			PUNPCKLWD	mm3,mm3
-			PUNPCKLWD	mm4,mm4
-			PUNPCKLWD	mm5,mm5
-			PUNPCKLDQ	mm7,mm7
-			PUNPCKLDQ	mm3,mm3
-			PUNPCKLDQ	mm4,mm4
-			PUNPCKLDQ	mm5,mm5
+		INC		AL
+		SHR		DX,5 ; right shift red 5bits
+		IMUL		BX,AX
+		IMUL		CX,AX
+		IMUL		DX,AX
+		MOVD		mm7,ESI
+		MOVD		mm3,EBX
+		MOVD		mm4,ECX
+		MOVD		mm5,EDX
+		PUNPCKLWD	mm3,mm3
+		PUNPCKLWD	mm4,mm4
+		PUNPCKLWD	mm5,mm5
+		PUNPCKLDQ	mm7,mm7
+		PUNPCKLDQ	mm3,mm3
+		PUNPCKLDQ	mm4,mm4
+		PUNPCKLDQ	mm5,mm5
 
-			MOVQ		[QBlue16Blend],mm3
-			MOVQ		[QGreen16Blend],mm4
-			MOVQ		[QRed16Blend],mm5
+		MOVQ		[QBlue16Blend],mm3
+		MOVQ		[QGreen16Blend],mm4
+		MOVQ		[QRed16Blend],mm5
 			;============
 
 
@@ -1181,13 +1181,13 @@ _MaskBlndResizeViewSurf16:
             NEG         EBP ; revert Horizontal Pnt X
 .NoRevertHz:
             CMP         BH,0
-            MOV			DWORD [HzPntInit],EDX
+            MOV		DWORD [HzPntInit],EDX
             JZ          SHORT .NoRevertVt
             NEG         EAX ; negate PntY
             MOVD        mm1,[SMaxY] ; SMaxX
             MOVD        mm4,[PntInitCPTDbrd+4] ; ((1<<Prec)-1)
 .NoRevertVt:
-            MOV			[PntPlusX],EBP
+            MOV		[PntPlusX],EBP
             MOVD		[YT1],mm1
             MOV         [PntPlusY],EAX ; pntY
 .BcResize:
@@ -1203,12 +1203,12 @@ _MaskBlndResizeViewSurf16:
 
             @InFastMaskTextBlndHLineDYZ16
 
-			MOV			EAX,[_NegScanLine]
+		MOV		EAX,[_NegScanLine]
             PADDD       mm4,[PntPlusY] ; next source hline
             ADD         [HzLineDstAddr],EAX ; next dst hline
             ;DEC         ECX
-            DEC			DWORD [HzLinesCount]
-            MOV			EDX,[HzPntInit]
+            DEC		DWORD [HzLinesCount]
+            MOV		EDX,[HzPntInit]
             JNZ         .BcResize
 
             POP         EDI
@@ -1224,18 +1224,18 @@ _TransResizeViewSurf16:
             PUSH        EDI
 
 ; prepare transparency
-			MOV       	EAX,[EBP+TResizeTrans] ;
-            AND			EAX,BYTE BlendMask
-            JZ			.EndResizeView
+		MOV       	EAX,[EBP+TResizeTrans] ;
+            AND		EAX,BYTE BlendMask
+            JZ		.EndResizeView
             ; copy source Surf
             MOV         ESI,[EBP+SrcTResizeSurf16]
             MOV         EDI,_SrcSurf
             CopySurf
 
-            MOV			EDX,EAX ;
-            INC			EAX
+            MOV		EDX,EAX ;
+            INC		EAX
 
-            XOR			DL,BlendMask ; 31-blendsrc
+            XOR		DL,BlendMask ; 31-blendsrc
             MOVD		mm7,EAX
             MOVD		mm6,EDX
             PUNPCKLWD	mm7,mm7
@@ -1295,13 +1295,13 @@ _TransResizeViewSurf16:
             NEG         EBP ; revert Horizontal Pnt X
 .NoRevertHz:
             CMP         BH,0
-            MOV			DWORD [HzPntInit],EDX
+            MOV		DWORD [HzPntInit],EDX
             JZ          SHORT .NoRevertVt
             NEG         EAX ; negate PntY
             MOVD        mm1,[SMaxY] ; SMaxX
             MOVD        mm4,[PntInitCPTDbrd+4] ; ((1<<Prec)-1)
 .NoRevertVt:
-            MOV			[PntPlusX],EBP
+            MOV		[PntPlusX],EBP
             MOV         [PntPlusY],EAX ; pntY
             MOVD        [yPntAcc],mm4
             MOVD		[YT1],mm1
@@ -1319,13 +1319,13 @@ _TransResizeViewSurf16:
 
             @InFastTransTextHLineDYZ16
 
-			MOV			EAX,[_NegScanLine]
+		MOV		EAX,[_NegScanLine]
             MOV         EBX,[PntPlusY] ; next source hline
             ADD         [HzLineDstAddr],EAX ; next dst hline
             ADD         [yPntAcc],EBX ; increase PntY acc
             ;DEC         ECX
-            DEC			DWORD [HzLinesCount]
-            MOV			EDX,[HzPntInit]
+            DEC		DWORD [HzLinesCount]
+            MOV		EDX,[HzPntInit]
             JNZ         .BcResize
 
 .EndResizeView:
@@ -1342,18 +1342,18 @@ _MaskTransResizeViewSurf16:
             PUSH        EDI
 
 ; prepare transparency
-			MOV       	EAX,[EBP+MTResizeTrans] ;
-            AND			EAX,BYTE BlendMask
-            JZ			.EndResizeView
+            MOV       	EAX,[EBP+MTResizeTrans] ;
+            AND		EAX,BYTE BlendMask
+            JZ		.EndResizeView
             ; copy source Surf
             MOV         ESI,[EBP+SrcMTResizeSurf16]
             MOV         EDI,_SrcSurf
             CopySurf
 
-            MOV			EDX,EAX ;
-            INC			EAX
+            MOV		EDX,EAX ;
+            INC		EAX
 
-            XOR			DL,BlendMask ; 31-blendsrc
+            XOR		DL,BlendMask ; 31-blendsrc
             MOVD		mm3,[SMask]
             MOVD		mm7,EAX
             MOVD		mm6,EDX
@@ -1417,13 +1417,13 @@ _MaskTransResizeViewSurf16:
             NEG         EBP ; revert Horizontal Pnt X
 .NoRevertHz:
             CMP         BH,0
-            MOV			DWORD [HzPntInit],EDX
+            MOV		DWORD [HzPntInit],EDX
             JZ          SHORT .NoRevertVt
             NEG         EAX ; negate PntY
             MOVD        mm1,[SMaxY] ; SMaxX
             MOVD        mm4,[PntInitCPTDbrd+4] ; ((1<<Prec)-1)
 .NoRevertVt:
-            MOV			[PntPlusX],EBP
+            MOV		[PntPlusX],EBP
             MOV         [PntPlusY],EAX ; pntY
             MOVD        [yPntAcc],mm4
             MOVD		[YT1],mm1
@@ -1441,13 +1441,13 @@ _MaskTransResizeViewSurf16:
 
             @InFastMaskTransTextHLineDYZ16
 
-			MOV			EAX,[_NegScanLine]
+		MOV		EAX,[_NegScanLine]
             MOV         EBX,[PntPlusY] ; next source hline
             ADD         [HzLineDstAddr],EAX ; next dst hline
             ADD         [yPntAcc],EBX ; increase PntY acc
             ;DEC         ECX
-            DEC			DWORD [HzLinesCount]
-            MOV			EDX,[HzPntInit]
+            DEC		DWORD [HzLinesCount]
+            MOV		EDX,[HzPntInit]
             JNZ         .BcResize
 
 .EndResizeView:
@@ -1467,25 +1467,25 @@ _RePoly16:
 
             ;CMP         [LastPolyStatus], BYTE 'N'
             MOV         EAX,[EBP+ReTypePoly16]
-            MOV			EBX,[EBP+ReColPoly16]
-            ;JE			_Poly16.PasDrawPoly
+            MOV		EBX,[EBP+ReColPoly16]
+            ;JE		_Poly16.PasDrawPoly
             TEST		EAX,POLY_FLAG_DBL_SIDED16
-            JZ			SHORT .DblSideCheck ; not a double-sided RePoly16 ?
+            JZ		SHORT .DblSideCheck ; not a double-sided RePoly16 ?
 .doRePoly:
             AND         EAX,DEL_POLY_FLAG_DBL_SIDED16
             MOV         ECX,[EBP+ReSSurf16]
             MOV         [clr],EBX
             MOV         [SSSurf],ECX
             CMP         [_LastPolyStatus], BYTE 'I' ; last render IN ?
-            JNE			.ClipRepoly16
-            JMP			[InFillPolyProc16+EAX*4]
+            JNE		.ClipRepoly16
+            JMP		[InFillPolyProc16+EAX*4]
 .ClipRepoly16:
-			JMP			[ClFillPolyProc16+EAX*4]
+            JMP		[ClFillPolyProc16+EAX*4]
 .DblSideCheck:
-			; if this is a reversed dbl_sided then skip repoly
-			CMP			DWORD [PPtrListPt], ReversedPtrListPt
-			JNE			SHORT .doRePoly
-			JMP			_Poly16.PasDrawPoly
+		; if this is a reversed dbl_sided then skip repoly
+		CMP		DWORD [PPtrListPt], ReversedPtrListPt
+		JNE		SHORT .doRePoly
+		JMP		_Poly16.PasDrawPoly
 
 ;****************************************************************************
 ;struct of PtrlistPt
@@ -1512,15 +1512,15 @@ _Poly16:
 
 		PUSH        ESI
 		PUSH        EBX
-		MOV			ESI,[EBP+PtrListPt16]
+		MOV		ESI,[EBP+PtrListPt16]
 		PUSH        EDI
 
 		LODSD		; MOV EAX,[ESI];  ADD ESI,4
-        MOV         [_LastPolyStatus], BYTE 'N' ; default no render
-		MOV			[NbPPoly],EAX
-		MOV			ECX,[ESI+8]
-		MOV			EAX,[ESI]
-		MOV			EBX,[ESI+4]
+            MOV         [_LastPolyStatus], BYTE 'N' ; default no render
+		MOV		[NbPPoly],EAX
+		MOV		ECX,[ESI+8]
+		MOV		EAX,[ESI]
+		MOV		EBX,[ESI+4]
 		MOVQ		mm0,[EAX] ; = XP1, YP1
 		MOVQ		mm1,[EBX] ; = XP2, YP2
 		MOVQ		mm2,[ECX] ; = XP3, YP3
@@ -1541,35 +1541,35 @@ _Poly16:
 		MOVD		EBX,mm2 ; = (YP3-YP2)
 		IMUL		EDI,EDX
 		IMUL		EAX,EBX
-		CMP			EAX,EDI
+		CMP		EAX,EDI
 
-		JL			.TstSiDblSide ; si <= 0 alors pas ok
-		JZ			.PasDrawPoly ; ignore poly if first 3 points aligned
+		JL		.TstSiDblSide ; si <= 0 alors pas ok
+		JZ		.PasDrawPoly ; ignore poly if first 3 points aligned
 ;****************
 .DrawPoly:
 		; Sauvegarde les parametre et libere EBP
-		MOV			EAX,[EBP+TypePoly16]
-		MOV			EBX,[EBP+ColPoly16]
+		MOV		EAX,[EBP+TypePoly16]
+		MOV		EBX,[EBP+ColPoly16]
 		AND     	EAX,DEL_POLY_FLAG_DBL_SIDED16
-		MOV			ECX,[EBP+SSurf16]
-		MOV			[PType],EAX
-		MOV			[clr],EBX
-		MOV			[PPtrListPt],ESI
-		MOV			EDI,[NbPPoly]
-		MOV			[SSSurf],ECX
+		MOV		ECX,[EBP+SSurf16]
+		MOV		[PType],EAX
+		MOV		[clr],EBX
+		MOV		[PPtrListPt],ESI
+		MOV		EDI,[NbPPoly]
+		MOV		[SSSurf],ECX
 ;-new born determination--------------
-		MOV			EBP,EDI
+		MOV		EBP,EDI
 		MOVQ		mm1,mm3 ; init min = XP1 | YP1
 		MOVQ		mm2,mm3 ; init max = XP1 | YP1
-		DEC			EBP ; = [NbPPoly] - 1
-		DEC			EDI ; " "
+		DEC		EBP ; = [NbPPoly] - 1
+		DEC		EDI ; " "
 .PBoucMnMxXY:
-		MOV			EAX,[ESI+EBP*4] ; = XN, YN
+		MOV		EAX,[ESI+EBP*4] ; = XN, YN
 		MOVQ		mm0,[EAX] ; = XN, YN
 		MOVQ		mm3,mm1 ; = min (x|y)
 		MOVQ		mm4,mm2 ; = max (x|y)
-		PCMPGTD		mm3,mm0 ; mm3 = min(x|y) > (xn|yn)
-		PCMPGTD		mm4,mm0 ; mm4 = max(x|y) > (xn|yn)
+		PCMPGTD	mm3,mm0 ; mm3 = min(x|y) > (xn|yn)
+		PCMPGTD	mm4,mm0 ; mm4 = max(x|y) > (xn|yn)
 		MOVQ		mm5,mm3 ;
 		MOVQ		mm6,mm4 ;
 		PAND		mm3,mm0 ; mm3 = ((xn|yn) < min(x|y)) ? (xn|yn) : (0|0)
@@ -1578,10 +1578,10 @@ _Poly16:
 		PAND		mm6,mm2 ; mm6 = ((xn|yn) < max(x|y)) ? max (x|y) : (0|0)
 		MOVQ		mm1,mm3
 		MOVQ		mm2,mm4
-		DEC			EBP
-		POR			mm1,mm5
-		POR			mm2,mm6
-		JNZ			.PBoucMnMxXY
+		DEC		EBP
+		POR		mm1,mm5
+		POR		mm2,mm6
+		JNZ		.PBoucMnMxXY
 		MOVD		EAX,mm2 ; maxx
 		MOVD		ECX,mm1 ; minx
 		PSRLQ		mm2,32
@@ -1591,100 +1591,100 @@ _Poly16:
 ;-----------------------------------------
 
 ; poly clipper ? dans l'ecran ? hors de l'ecran ?
-		CMP			EAX,[_MaxX]
-		JG			.PolyClip
-		CMP			ECX,[_MinX]
-		JL			.PolyClip
-		CMP			EBX,[_MaxY]
-		JG			.PolyClip
-		CMP			EDX,[_MinY]
-		JL			.PolyClip
+		CMP		EAX,[_MaxX]
+		JG		.PolyClip
+		CMP		ECX,[_MinX]
+		JL		.PolyClip
+		CMP		EBX,[_MaxY]
+		JG		.PolyClip
+		CMP		EDX,[_MinY]
+		JL		.PolyClip
 
 ; trace Poly non Clipper  **************************************************
 		;JMP		.PolyClip
 
-		MOV			ECX,[_OrgY]	 ; calcule DebYPoly, FinYPoly
-		MOV			EAX,[ESI+EDI*4]
-		ADD			EDX,ECX
-		ADD			EBX,ECX
-		MOV			[DebYPoly],EDX
-		MOV			[FinYPoly],EBX
+		MOV		ECX,[_OrgY]	 ; calcule DebYPoly, FinYPoly
+		MOV		EAX,[ESI+EDI*4]
+		ADD		EDX,ECX
+		ADD		EBX,ECX
+		MOV		[DebYPoly],EDX
+		MOV		[FinYPoly],EBX
 ; calcule les bornes horizontal du poly
-		MOV			EDX,EDI ; = NbPPoly - 1
-		MOV			ECX,[EAX]
-		MOV			EBP,[EAX+4]
-		MOV			[XP2],ECX
-		MOV			[YP2],EBP
+		MOV		EDX,EDI ; = NbPPoly - 1
+		MOV		ECX,[EAX]
+		MOV		EBP,[EAX+4]
+		MOV		[XP2],ECX
+		MOV		[YP2],EBP
 		@InCalculerContour16
-		MOV			EAX,[PType]
-        MOV         [_LastPolyStatus], BYTE 'I'; In render
-		JMP			[InFillPolyProc16+EAX*4]
+		MOV		EAX,[PType]
+            MOV         [_LastPolyStatus], BYTE 'I'; In render
+		JMP		[InFillPolyProc16+EAX*4]
 		;JMP			.PasDrawPoly
 
 .PolyClip:
 ; outside view ? now draw !
-		CMP			EAX,[_MinX]
-		JL			.PasDrawPoly
-		CMP			EBX,[_MinY]
-		JL			.PasDrawPoly
-		CMP			ECX,[_MaxX]
-		JG			.PasDrawPoly
-		CMP			EDX,[_MaxY]
-		JG			.PasDrawPoly
+		CMP		EAX,[_MinX]
+		JL		.PasDrawPoly
+		CMP		EBX,[_MinY]
+		JL		.PasDrawPoly
+		CMP		ECX,[_MaxX]
+		JG		.PasDrawPoly
+		CMP		EDX,[_MaxY]
+		JG		.PasDrawPoly
 ; Drop too big poly
 		; drop too BIG tri
-		SUB			ECX,EAX  ; deltaY
-		SUB			EDX,EBX  ; deltaX
-		CMP			ECX,MaxDeltaDim
-		JGE			.PasDrawPoly
-		CMP			EDX,MaxDeltaDim
-		JGE			.PasDrawPoly
-		ADD			ECX,EAX ; restor MaxY
-		ADD			EDX,EBX ; restor MaxX
+		SUB		ECX,EAX  ; deltaY
+		SUB		EDX,EBX  ; deltaX
+		CMP		ECX,MaxDeltaDim
+		JGE		.PasDrawPoly
+		CMP		EDX,MaxDeltaDim
+		JGE		.PasDrawPoly
+		ADD		ECX,EAX ; restor MaxY
+		ADD		EDX,EBX ; restor MaxX
 
 ; trace Poly Clipper  ******************************************************
-		MOV			EAX,[_MaxY]	; determine DebYPoly, FinYPoly
-		MOV			ECX,[_MinY]
-		CMP			EBX,EAX
-		JL			.PasSupMxY
-		MOV			EBX,EAX
+		MOV		EAX,[_MaxY]	; determine DebYPoly, FinYPoly
+		MOV		ECX,[_MinY]
+		CMP		EBX,EAX
+		JL		.PasSupMxY
+		MOV		EBX,EAX
 .PasSupMxY:
-		CMP			EDX,ECX
-		JG			.PasInfMnY
-		MOV			EDX,ECX
+		CMP		EDX,ECX
+		JG		.PasInfMnY
+		MOV		EDX,ECX
 .PasInfMnY:
-		MOV			EBP,[_OrgY]	  ; Ajuste [DebYPoly],[FinYPoly]
-		MOV			EAX,[ESI+EDI*4]
-		ADD			EDX,EBP
-		ADD			EBX,EBP
-		MOV			[DebYPoly],EDX
-		MOV			[FinYPoly],EBX
-		MOV			EDX,EDI ; EDX compteur de point = NbPPoly-1
+		MOV		EBP,[_OrgY]	  ; Ajuste [DebYPoly],[FinYPoly]
+		MOV		EAX,[ESI+EDI*4]
+		ADD		EDX,EBP
+		ADD		EBX,EBP
+		MOV		[DebYPoly],EDX
+		MOV		[FinYPoly],EBX
+		MOV		EDX,EDI ; EDX compteur de point = NbPPoly-1
 		MOV 		ECX,[EAX]
 		MOV 		EBP,[EAX+4]
-		MOV			[XP2],ECX
-		MOV			[YP2],EBP
+		MOV		[XP2],ECX
+		MOV		[YP2],EBP
 		MOVD		mm4,ECX
 		MOVD		mm5,EBP		; sauvegarde xp2,yp2
 		@ClipCalculerContour ; use same as 8bpp as it compute xdeb and xfin for eax hzline
 
-		CMP			DWORD [DebYPoly],BYTE (-1)
-		MOV			EAX,[PType]
-		JE			.PasDrawPoly
-        MOV         [_LastPolyStatus], BYTE 'C' ; Clip render
-		JMP			[ClFillPolyProc16+EAX*4]
+		CMP		DWORD [DebYPoly],BYTE (-1)
+		MOV		EAX,[PType]
+		JE		.PasDrawPoly
+            MOV         [_LastPolyStatus], BYTE 'C' ; Clip render
+		JMP		[ClFillPolyProc16+EAX*4]
 
 .PasDrawPoly:
-        POP         EDI
-		POP         EBX
-        POP         ESI
+            POP         EDI
+            POP         EBX
+            POP         ESI
 
     MMX_RETURN
 
 .TstSiDblSide:
 		TEST		BYTE [EBP+TypePoly+3],POLY_FLAG_DBL_SIDED16 >> 24
-		MOV			ECX,[NbPPoly]
-		JZ			.PasDrawPoly
+		MOV		ECX,[NbPPoly]
+		JZ		.PasDrawPoly
 		; swap all points except P1 !
 		MOV         EAX,[ESI]
 		MOV         EDX,ReversedPtrListPt

@@ -236,7 +236,7 @@ void rectmap(int x1,int y1,int x2,int y2,int rcol,unsigned int rmap);
 // 16 bpp drawing functions
 // ------------------------
 
-#define RGB16(r,g,b) ((b>>3)|((g>>2)<<5)|((r>>3)<<11))
+#define RGB16(r,g,b) (((b)>>3)|(((g)>>2)<<5)|(((r)>>3)<<11))
 
 void PutPixel16(void *Point,int col);
 int GetPixel16(void *Point);
