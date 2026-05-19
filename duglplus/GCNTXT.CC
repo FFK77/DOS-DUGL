@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <conio.h>
 #include <unistd.h>
-#include <dugl.h>
-#include "dgui.h"
+#include <DUGL.h>
+#include "DGUI.H"
 
 
 CGraphContext::CGraphContext(int BitsPixel,void *PalBGR1024) {

@@ -10,9 +10,9 @@
 #include <string.h>
 #include <sys/movedata.h>
 #include <sys/segments.h>
-#include <dugl.h>
-#include "intrdugl.h"
-#include "dsound.h"
+#include <DUGL.h>
+#include "INTRDUGL.H"
+#include "DSOUND.H"
 
 int  LoadSoundDRV(SoundDRV **SndDrv,char *Fname)
 {	FILE *InSoundDRV;

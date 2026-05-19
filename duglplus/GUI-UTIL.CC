@@ -4,9 +4,9 @@
 #include <unistd.h>
 #include <string.h>
 #include <dir.h>
-#include <dugl.h>
+#include <DUGL.h>
 #include "intrdugl.h"
-#include "dgui.h"
+#include "DGUI.H"
 
 
 //****** MessageBox *******************

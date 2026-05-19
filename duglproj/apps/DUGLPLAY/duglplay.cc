@@ -103,8 +103,8 @@
 #include <dir.h>
 #include <math.h>
 
-#include <dugl.h>
-#include <duglplus.h>
+#include <DUGL.h>
+#include <DUGLPLUS.H>
 
 #ifdef __cplusplus
 extern "C" {
