@@ -1765,6 +1765,12 @@ int OpenVideoFFMPEG(char *FileName) {
     }
     /* Init the decoders */
 
+    // loop filter consumes too much CPU power on old hardware
+	pVideoCodecCtx->skip_loop_filter = AVDISCARD_ALL;
+	// Skip inverse DCT for non reference frames
+	// pVideoCodecCtx->skip_idct = AVDISCARD_NONREF;
+	pVideoCodecCtx->thread_count = 1;
+
     if (avcodec_open2(pVideoCodecCtx, pVideoCodec, NULL) < 0) {
         DestroyVideoFFMPEG();
         return 7;
@@ -2418,7 +2424,7 @@ void YUV2RGB_F420(DgSurf *S, SYUVData *pYUVDATA) {
 				}
 			}
 
-			// blockverabeitung spart wertfolle cpu cyclen
+			// blockworks saves some cycles
 			int widthEnd = pYUVDATA->width - 1;
 			if (idx&1) {
 				for (int iw=0; iw<widthEnd; iw+=2) {
@@ -2442,7 +2448,6 @@ void YUV2RGB_F420(DgSurf *S, SYUVData *pYUVDATA) {
 
 					uFinal[iw+1] = (uFrm[iw>>1]+uFrm[(iw>>1)+1])>>1;
 					vFinal[iw+1] = (vFrm[iw>>1]+vFrm[(iw>>1)+1])>>1;
-					// printf("debug pix %d", iw);
 				}
 				if (pYUVDATA->width & 1) {
 					int iw = pYUVDATA->width - 1;
@@ -2479,7 +2484,6 @@ void YUV2RGB_F422(DgSurf *S, SYUVData *pYUVDATA) {
 			uFrm = (unsigned char *)pYUVDATA->u+(pYUVDATA->u_scan*idx);
 			vFrm = (unsigned char *)pYUVDATA->v+(pYUVDATA->v_scan*idx);
 
-			// performace boost durch unrolling um branches zu skippen
 			int widthEnd = pYUVDATA->width - 1;
 			for (int iw=0; iw<widthEnd; iw+=2) {
 				uFinal[iw] = uFrm[iw>>1];
@@ -2487,7 +2491,6 @@ void YUV2RGB_F422(DgSurf *S, SYUVData *pYUVDATA) {
 
 				uFinal[iw+1] = (uFrm[iw>>1]+uFrm[(iw>>1)+1])>>1;
 				vFinal[iw+1] = (vFrm[iw>>1]+vFrm[(iw>>1)+1])>>1;
-				// printf("debug pix iter %d", iw);
 			}
 			if (pYUVDATA->width & 1) {
 				int iw = pYUVDATA->width - 1;
