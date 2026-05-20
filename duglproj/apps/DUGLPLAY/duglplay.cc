@@ -2117,8 +2117,6 @@ int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop) {
     return 0;
 }
 
-
-
 int GetNextAudioFrameFFMPEG() {
     int ret_av = 0;
     int retfunc = 0;
@@ -2140,7 +2138,7 @@ int GetNextAudioFrameFFMPEG() {
 
                     int out_samples = swr_get_out_samples(au_convert_ctx, audioFrame->nb_samples);
                     // reallocate/resize resample buffer if required
-                    int dst_nb_samples = ((out_samples/1024)+1)*1024;
+                    int dst_nb_samples = ((out_samples >> 10) + 1) << 10;
                     if (dst_nb_samples > max_dst_nb_samples) {
                         av_freep(&audio_dst_data[0]);
                         if (av_samples_alloc(audio_dst_data, &audio_dst_linesize, (Audio16Bits) ? 2 : 1,
@@ -2169,20 +2167,20 @@ int GetNextAudioFrameFFMPEG() {
                         av_frame_unref(audioFrame);
                         continue;
                     }
-                    int LastVoiceIdx = (audioRingStart+audioRingCount)%AUDIO_RING_SIZE;
+                    int LastVoiceIdx = audioRingStart + audioRingCount; if (LastVoiceIdx >= AUDIO_RING_SIZE) LastVoiceIdx -= AUDIO_RING_SIZE;
+                    int outBytes = outframes * curVoiceOneSample; int voiByteSz = VoiceSampleSize * curVoiceOneSample;
 
-
-                    if (curVoicePos/curVoiceOneSample + outframes >= VoiceSampleSize) {
+                    if (curVoicePos + outBytes >= voiByteSz) {
 
                         if (audioRingCount<AUDIO_RING_SIZE) {
                                 audioRingCount++;
                         } else {
                             // ring buffer full overwrite oldest voice
                             countRingOverWritten ++;
-                            audioRingStart = (audioRingStart+1)%AUDIO_RING_SIZE;
+                            audioRingStart++; if (audioRingStart >= AUDIO_RING_SIZE) audioRingStart = 0;
                         }
                         // copy remaining required data into current Voice
-                        int remainCopy = (VoiceSampleSize-(curVoicePos/curVoiceOneSample))*curVoiceOneSample;
+                        int remainCopy = voiByteSz - curVoicePos;
 
                         // completely fill last voice
                         uint8_t *PtrDest = (uint8_t *)audioRing[LastVoiceIdx]->Ptr;
@@ -2191,35 +2189,36 @@ int GetNextAudioFrameFFMPEG() {
                         }
                         int16_t *genPtr = (int16_t *)audioRing[LastVoiceIdx]->Ptr;
 
-                        curVoicePos = (outframes*curVoiceOneSample) - remainCopy;
-                        LastVoiceIdx = (audioRingStart+audioRingCount)%AUDIO_RING_SIZE;
+                        curVoicePos = outBytes - remainCopy;
+                        LastVoiceIdx = audioRingStart + audioRingCount; if (LastVoiceIdx >= AUDIO_RING_SIZE) LastVoiceIdx -= AUDIO_RING_SIZE;
                         // handle case where outframes bigger than VoiceSampleSize
-                        while (curVoicePos/curVoiceOneSample > VoiceSampleSize) {
-                            memcpy(audioRing[LastVoiceIdx]->Ptr, &audio_dst_data[0][remainCopy], VoiceSampleSize*curVoiceOneSample);
-                            remainCopy += VoiceSampleSize*curVoiceOneSample;
-                            curVoicePos -= VoiceSampleSize*curVoiceOneSample;
+                        int copyOffset = remainCopy; while (curVoicePos >= voiByteSz) {
+                            // printf("debug curVoicePos: %d\n", curVoicePos);
+                            memcpy(audioRing[LastVoiceIdx]->Ptr, &audio_dst_data[0][copyOffset], voiByteSz);
+                            copyOffset += voiByteSz;
+                            curVoicePos -= voiByteSz;
 
                             if (audioRingCount<AUDIO_RING_SIZE) {
                                     audioRingCount++;
                             } else {
                                 // ring buffer full: overwrite oldest voice
                                 countRingOverWritten ++;
-                                audioRingStart = (audioRingStart+1)%AUDIO_RING_SIZE;
+                                audioRingStart++; if (audioRingStart >= AUDIO_RING_SIZE) audioRingStart = 0;
                             }
-                            LastVoiceIdx = (audioRingStart+audioRingCount)%AUDIO_RING_SIZE;
+                            LastVoiceIdx = audioRingStart + audioRingCount; if (LastVoiceIdx >= AUDIO_RING_SIZE) LastVoiceIdx -= AUDIO_RING_SIZE;
                         }
                         // last chunk ?
                         if (curVoicePos > 0) {
                             memset(audioRing[LastVoiceIdx]->Ptr, 0, audioRing[LastVoiceIdx]->Size);
-                            memcpy(audioRing[LastVoiceIdx]->Ptr, &audio_dst_data[0][remainCopy], curVoicePos);
+                            memcpy(audioRing[LastVoiceIdx]->Ptr, &audio_dst_data[0][copyOffset], curVoicePos);
                         }
 
                         retOpenAudio = 9;
                         voiceAdded = true;
-                    } else if (outframes > 0) {
+                    } else if (outBytes > 0) {
                         uint8_t *PtrDest = (uint8_t *)audioRing[LastVoiceIdx]->Ptr;
-                        memcpy(&PtrDest[curVoicePos], audio_dst_data[0], outframes*curVoiceOneSample);
-                        curVoicePos += outframes*curVoiceOneSample; //audioFrame->nb_samples;
+                        memcpy(&PtrDest[curVoicePos], audio_dst_data[0], outBytes);
+                        curVoicePos += outBytes; //audioFrame->nb_samples;
                     }
 
                     /*swr_convert(au_convert_ctx,
@@ -2245,7 +2244,7 @@ int GetNextAudioFrameFFMPEG() {
                     audioRingCount++;
             } else {
                 // ring buffer full: overwrite oldest voice
-                audioRingStart = (audioRingStart+1)%AUDIO_RING_SIZE;
+                audioRingStart++; if (audioRingStart >= AUDIO_RING_SIZE) audioRingStart = 0;
             }
             return 1;
         }
