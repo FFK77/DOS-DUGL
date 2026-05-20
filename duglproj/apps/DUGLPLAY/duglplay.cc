@@ -102,6 +102,7 @@
 #include <ctype.h>
 #include <dir.h>
 #include <math.h>
+#include <dpmi.h>
 
 #include <DUGL.h>
 #include <DUGLPLUS.H>
@@ -266,8 +267,8 @@ int FFZone = 0, FFFail = 0;
 char soundDriverFileName[256] = "sb16.drv";
 //#define AUDIO_RING_SIZE 16
 DVoice **audioRing = NULL;
-int AUDIO_RING_SIZE = 6;
-int MaxVoicesRingCount = 2;
+int AUDIO_RING_SIZE = 16;
+int MaxVoicesRingCount = 6;
 int audioRingStart = 0;
 int audioRingCount = 0;
 int audioFrameSamples = 0;
@@ -614,7 +615,7 @@ int main (int argc, char ** argv) {
       float avgFps=SynchAverageTime(SynchBuff),
             lastFps=SynchLastTime(SynchBuff);
       //if (lastFps <= 0.1f)
-      //  __dpmi_yield();
+        __dpmi_yield();
 
 
       DgSetCurSurf(rendSurf16);
