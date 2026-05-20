@@ -2394,102 +2394,122 @@ void CloseVidFFMPEG() {
 ///////////////////////////////////////
 // general YUV 2 RGB conversion routine
 ///////////////////////////////////////
-
 void YUV2RGB_F420(DgSurf *S, SYUVData *pYUVDATA) {
-    unsigned char *yFrm    =NULL;
-    unsigned char *uFrm    =NULL;
-    unsigned char *vFrm    =NULL;
-    unsigned char *uFrmNL  =NULL;
-    unsigned char *vFrmNL  =NULL;
-    unsigned int scanlinePtr = S->rlfb;
+	unsigned char *yFrm    =NULL;
+	unsigned char *uFrm    =NULL;
+	unsigned char *vFrm    =NULL;
+	unsigned char *uFrmNL  =NULL;
+	unsigned char *vFrmNL  =NULL;
+	unsigned int scanlinePtr = S->rlfb;
 
-    if(InterpolateUV) {
-       for (int idx = 0; idx <pYUVDATA->height; idx++) {
-           yFrm = (unsigned char *)pYUVDATA->y+(pYUVDATA->y_scan*idx);
-           uFrm = (unsigned char *)pYUVDATA->u+(pYUVDATA->u_scan*(idx>>1));
-           vFrm = (unsigned char *)pYUVDATA->v+(pYUVDATA->v_scan*(idx>>1));
-           // next line pointer
-           if (idx&1) {
-              if (idx<(pYUVDATA->height-1)) {
-                 uFrmNL = (unsigned char *)pYUVDATA->u+(pYUVDATA->u_scan*((idx>>1)+1));
-                 vFrmNL = (unsigned char *)pYUVDATA->v+(pYUVDATA->v_scan*((idx>>1)+1));
-              } else {
-                 uFrmNL = uFrm;
-                 vFrmNL = vFrm;
-              }
-           }
-           for (int iw=0;iw<pYUVDATA->width;iw++) {
-               // interpolate u and v values for odd lines or columns
-               if (idx&1) {
-                  if ((iw&1) && iw<pYUVDATA->width-1) {
-                     uFinal[iw] = (uFrm[iw>>1]+uFrmNL[iw>>1]+uFrm[(iw>>1)+1]+uFrmNL[(iw>>1)+1])>>2;
-                     vFinal[iw] = (vFrm[iw>>1]+vFrmNL[iw>>1]+vFrm[(iw>>1)+1]+vFrmNL[(iw>>1)+1])>>2;
-                  } else {
-                     uFinal[iw] = (uFrm[iw>>1]+uFrmNL[iw>>1])>>1;
-                     vFinal[iw] = (vFrm[iw>>1]+vFrmNL[iw>>1])>>1;
-                  }
-               } else {
-                  if ((iw&1) && iw<pYUVDATA->width-1) {
-                     uFinal[iw] = (uFrm[iw>>1]+uFrm[(iw>>1)+1])>>1;
-                     vFinal[iw] = (vFrm[iw>>1]+vFrm[(iw>>1)+1])>>1;
-                  } else {
-                     uFinal[iw] = uFrm[iw>>1];
-                     vFinal[iw] = vFrm[iw>>1];
-                  }
-               }
-           }
-           ScanYUV2RGB16(yFrm, uFinal, vFinal, (unsigned short *)(scanlinePtr), pYUVDATA->width);
-           scanlinePtr+=S->ScanLine;
-       }
-    }
-    else {
-       for (int idx = 0; idx <pYUVDATA->height; idx++)
-       {
-           Scan422YUV2RGB16((unsigned char *)(pYUVDATA->y+(pYUVDATA->y_scan*idx)),
-                (unsigned char *)(pYUVDATA->u+(pYUVDATA->u_scan*(idx>>1))),
-                (unsigned char *)(pYUVDATA->v+(pYUVDATA->v_scan*(idx>>1))),
-                (unsigned short *)(scanlinePtr), pYUVDATA->width);
-           scanlinePtr+=S->ScanLine;
-       }
-    }
+	if(InterpolateUV) {
+		for (int idx = 0; idx <pYUVDATA->height; idx++) {
+			yFrm = (unsigned char *)pYUVDATA->y+(pYUVDATA->y_scan*idx);
+			uFrm = (unsigned char *)pYUVDATA->u+(pYUVDATA->u_scan*(idx>>1));
+			vFrm = (unsigned char *)pYUVDATA->v+(pYUVDATA->v_scan*(idx>>1));
+			// next line pointer
+			if (idx&1) {
+				if (idx<(pYUVDATA->height-1)) {
+					uFrmNL = (unsigned char *)pYUVDATA->u+(pYUVDATA->u_scan*((idx>>1)+1));
+					vFrmNL = (unsigned char *)pYUVDATA->v+(pYUVDATA->v_scan*((idx>>1)+1));
+				} else {
+					uFrmNL = uFrm;
+					vFrmNL = vFrm;
+				}
+			}
+
+			// blockverabeitung spart wertfolle cpu cyclen
+			int widthEnd = pYUVDATA->width - 1;
+			if (idx&1) {
+				for (int iw=0; iw<widthEnd; iw+=2) {
+					// interpolate u and v values for odd lines or columns
+					uFinal[iw] = (uFrm[iw>>1]+uFrmNL[iw>>1])>>1;
+					vFinal[iw] = (vFrm[iw>>1]+vFrmNL[iw>>1])>>1;
+
+					uFinal[iw+1] = (uFrm[iw>>1]+uFrmNL[iw>>1]+uFrm[(iw>>1)+1]+uFrmNL[(iw>>1)+1])>>2;
+					vFinal[iw+1] = (vFrm[iw>>1]+vFrmNL[iw>>1]+vFrm[(iw>>1)+1]+vFrmNL[(iw>>1)+1])>>2;
+				}
+				if (pYUVDATA->width & 1) {
+					int iw = pYUVDATA->width - 1;
+					uFinal[iw] = (uFrm[iw>>1]+uFrmNL[iw>>1])>>1;
+					vFinal[iw] = (vFrm[iw>>1]+vFrmNL[iw>>1])>>1;
+				}
+			} else {
+				for (int iw=0; iw<widthEnd; iw+=2) {
+					// interpolate u and v values for odd lines or columns
+					uFinal[iw] = uFrm[iw>>1];
+					vFinal[iw] = vFrm[iw>>1];
+
+					uFinal[iw+1] = (uFrm[iw>>1]+uFrm[(iw>>1)+1])>>1;
+					vFinal[iw+1] = (vFrm[iw>>1]+vFrm[(iw>>1)+1])>>1;
+					// printf("debug pix %d", iw);
+				}
+				if (pYUVDATA->width & 1) {
+					int iw = pYUVDATA->width - 1;
+					uFinal[iw] = uFrm[iw>>1];
+					vFinal[iw] = vFrm[iw>>1];
+				}
+			}
+
+			ScanYUV2RGB16(yFrm, uFinal, vFinal, (unsigned short *)(scanlinePtr), pYUVDATA->width);
+			scanlinePtr+=S->ScanLine;
+		}
+	}
+	else {
+		for (int idx = 0; idx <pYUVDATA->height; idx++)
+		{
+			Scan422YUV2RGB16((unsigned char *)(pYUVDATA->y+(pYUVDATA->y_scan*idx)),
+				(unsigned char *)(pYUVDATA->u+(pYUVDATA->u_scan*(idx>>1))),
+				(unsigned char *)(pYUVDATA->v+(pYUVDATA->v_scan*(idx>>1))),
+				(unsigned short *)(scanlinePtr), pYUVDATA->width);
+			scanlinePtr+=S->ScanLine;
+		}
+	}
 }
 
 void YUV2RGB_F422(DgSurf *S, SYUVData *pYUVDATA) {
-    unsigned char *yFrm    =NULL;
-    unsigned char *uFrm    =NULL;
-    unsigned char *vFrm    =NULL;
-    unsigned int scanlinePtr = S->rlfb;
+	unsigned char *yFrm    =NULL;
+	unsigned char *uFrm    =NULL;
+	unsigned char *vFrm    =NULL;
+	unsigned int scanlinePtr = S->rlfb;
 
-    if(InterpolateUV) {
-       for (int idx = 0; idx <pYUVDATA->height; idx++) {
-           yFrm = (unsigned char *)pYUVDATA->y+(pYUVDATA->y_scan*idx);
-           uFrm = (unsigned char *)pYUVDATA->u+(pYUVDATA->u_scan*idx);
-           vFrm = (unsigned char *)pYUVDATA->v+(pYUVDATA->v_scan*idx);
-           for (int iw=0;iw<pYUVDATA->width;iw++) {
-               if ((iw&1) && iw<pYUVDATA->width-1) {
-                   uFinal[iw] = (uFrm[iw>>1]+uFrm[(iw>>1)+1])>>1;
-                   vFinal[iw] = (vFrm[iw>>1]+vFrm[(iw>>1)+1])>>1;
-               } else {
-                  uFinal[iw] = uFrm[iw>>1];
-                  vFinal[iw] = vFrm[iw>>1];
-               }
-           }
-           ScanYUV2RGB16(yFrm, uFinal, vFinal, (unsigned short *)(scanlinePtr), pYUVDATA->width);
-           scanlinePtr+=S->ScanLine;
-       }
-    }
-    else {
-       for (int idx = 0; idx <pYUVDATA->height; idx++)
-       {
-           Scan422YUV2RGB16((unsigned char *)(pYUVDATA->y+(pYUVDATA->y_scan*idx)),
-                (unsigned char *)(pYUVDATA->u+(pYUVDATA->u_scan*idx)),
-                (unsigned char *)(pYUVDATA->v+(pYUVDATA->v_scan*idx)),
-                (unsigned short *)(scanlinePtr), pYUVDATA->width);
-           scanlinePtr+=S->ScanLine;
-       }
-    }
+	if(InterpolateUV) {
+		for (int idx = 0; idx <pYUVDATA->height; idx++) {
+			yFrm = (unsigned char *)pYUVDATA->y+(pYUVDATA->y_scan*idx);
+			uFrm = (unsigned char *)pYUVDATA->u+(pYUVDATA->u_scan*idx);
+			vFrm = (unsigned char *)pYUVDATA->v+(pYUVDATA->v_scan*idx);
+
+			// performace boost durch unrolling um branches zu skippen
+			int widthEnd = pYUVDATA->width - 1;
+			for (int iw=0; iw<widthEnd; iw+=2) {
+				uFinal[iw] = uFrm[iw>>1];
+				vFinal[iw] = vFrm[iw>>1];
+
+				uFinal[iw+1] = (uFrm[iw>>1]+uFrm[(iw>>1)+1])>>1;
+				vFinal[iw+1] = (vFrm[iw>>1]+vFrm[(iw>>1)+1])>>1;
+				// printf("debug pix iter %d", iw);
+			}
+			if (pYUVDATA->width & 1) {
+				int iw = pYUVDATA->width - 1;
+				uFinal[iw] = uFrm[iw>>1];
+				vFinal[iw] = vFrm[iw>>1];
+			}
+
+			ScanYUV2RGB16(yFrm, uFinal, vFinal, (unsigned short *)(scanlinePtr), pYUVDATA->width);
+			scanlinePtr+=S->ScanLine;
+		}
+	}
+	else {
+		for (int idx = 0; idx <pYUVDATA->height; idx++)
+		{
+			Scan422YUV2RGB16((unsigned char *)(pYUVDATA->y+(pYUVDATA->y_scan*idx)),
+				(unsigned char *)(pYUVDATA->u+(pYUVDATA->u_scan*idx)),
+				(unsigned char *)(pYUVDATA->v+(pYUVDATA->v_scan*idx)),
+				(unsigned short *)(scanlinePtr), pYUVDATA->width);
+			scanlinePtr+=S->ScanLine;
+		}
+	}
 }
-
 
 void YUV2RGB_F444(DgSurf *S, SYUVData *pYUVDATA) {
     unsigned int width       = pYUVDATA->width;
