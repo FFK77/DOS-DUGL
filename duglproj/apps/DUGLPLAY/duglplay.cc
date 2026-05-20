@@ -2422,16 +2422,16 @@ void YUV2RGB_F420(DgSurf *S, SYUVData *pYUVDATA) {
                // interpolate u and v values for odd lines or columns
                if (idx&1) {
                   if ((iw&1) && iw<pYUVDATA->width-1) {
-                     uFinal[iw] = (uFrm[iw/2]+uFrmNL[iw/2]+uFrm[iw/2+1]+uFrmNL[iw/2+1])/4;
-                     vFinal[iw] = (vFrm[iw/2]+vFrmNL[iw/2]+vFrm[iw/2+1]+vFrmNL[iw/2+1])/4;
+                     uFinal[iw] = (uFrm[iw>>1]+uFrmNL[iw>>1]+uFrm[(iw>>1)+1]+uFrmNL[(iw>>1)+1])>>2;
+                     vFinal[iw] = (vFrm[iw>>1]+vFrmNL[iw>>1]+vFrm[(iw>>1)+1]+vFrmNL[(iw>>1)+1])>>2;
                   } else {
-                     uFinal[iw] = (uFrm[iw/2]+uFrmNL[iw/2])/2;
-                     vFinal[iw] = (vFrm[iw/2]+vFrmNL[iw/2])/2;
+                     uFinal[iw] = (uFrm[iw>>1]+uFrmNL[iw>>1])>>1;
+                     vFinal[iw] = (vFrm[iw>>1]+vFrmNL[iw>>1])>>1;
                   }
                } else {
                   if ((iw&1) && iw<pYUVDATA->width-1) {
-                     uFinal[iw] = (uFrm[iw/2]+uFrm[iw/2+1])/2;
-                     vFinal[iw] = (vFrm[iw/2]+vFrm[iw/2+1])/2;
+                     uFinal[iw] = (uFrm[iw>>1]+uFrm[(iw>>1)+1])>>1;
+                     vFinal[iw] = (vFrm[iw>>1]+vFrm[(iw>>1)+1])>>1;
                   } else {
                      uFinal[iw] = uFrm[iw>>1];
                      vFinal[iw] = vFrm[iw>>1];
@@ -2467,11 +2467,11 @@ void YUV2RGB_F422(DgSurf *S, SYUVData *pYUVDATA) {
            vFrm = (unsigned char *)pYUVDATA->v+(pYUVDATA->v_scan*idx);
            for (int iw=0;iw<pYUVDATA->width;iw++) {
                if ((iw&1) && iw<pYUVDATA->width-1) {
-                   uFinal[iw] = (uFrm[iw/2]+uFrm[iw/2+1])/2;
-                   vFinal[iw] = (vFrm[iw/2]+vFrm[iw/2+1])/2;
+                   uFinal[iw] = (uFrm[iw>>1]+uFrm[(iw>>1)+1])>>1;
+                   vFinal[iw] = (vFrm[iw>>1]+vFrm[(iw>>1)+1])>>1;
                } else {
-                  uFinal[iw] = uFrm[iw/2];
-                  vFinal[iw] = vFrm[iw/2];
+                  uFinal[iw] = uFrm[iw>>1];
+                  vFinal[iw] = vFrm[iw>>1];
                }
            }
            ScanYUV2RGB16(yFrm, uFinal, vFinal, (unsigned short *)(scanlinePtr), pYUVDATA->width);
