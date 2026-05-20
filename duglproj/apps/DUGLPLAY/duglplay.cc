@@ -129,7 +129,7 @@ static int cptLog = 0;
 #define FLOG(formatMsg, ...) { \
     FILE *LOGFILE = fopen("./log.txt", "at");\
     if (LOGFILE!=NULL) {\
-        fprintf(LOGFILE, formatMsg, __VA_ARGS__);\
+        fprintf(LOGFILE, formatMsg, ##__VA_ARGS__);\
         fclose(LOGFILE);\
         cptLog++; \
     }\
@@ -1939,6 +1939,7 @@ int OpenAudioFFMPEG(char *FileName) {
 }
 
 // return 1 if new frame found, 0 else
+// return 1 if new frame found, 0 else
 int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop) {
     unsigned int nDrops     = nFramesToDrop;
     int ret_av = 0;
@@ -2046,26 +2047,46 @@ int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop) {
                         DestroySurf(Surf8bpp);
                     };
                     break;
-                case AV_PIX_FMT_RGB24:
-                    for (int i=0; i < S16->SizeSurf /2 ; i++) {
-                        ((unsigned short*)S16->rlfb)[i] = RGB16(videoFrame->data[0][i*3+0], videoFrame->data[0][i*3+1], videoFrame->data[0][i*3+2]);
+                case AV_PIX_FMT_RGB24: {
+                    unsigned short* outPoint = (unsigned short*)S16->rlfb;
+                    unsigned char* inData = videoFrame->data[0];
+                    int maxSize = S16->SizeSurf >> 1;
+                    for (int currIdx=0; currIdx < maxSize ; currIdx++) {
+                        *outPoint++ = RGB16(inData[0], inData[1], inData[2]);
+                        inData += 3;
                     }
                     break;
-                case AV_PIX_FMT_BGR24:
-                    for (int i=0; i < S16->SizeSurf /2 ; i++) {
-                        ((unsigned short*)S16->rlfb)[i] = RGB16(videoFrame->data[0][i*3+2], videoFrame->data[0][i*3+1], videoFrame->data[0][i*3+0]);
+                }
+                case AV_PIX_FMT_BGR24: {
+                    unsigned short* outPoint = (unsigned short*)S16->rlfb;
+                    unsigned char* inData = videoFrame->data[0];
+                    int maxSize = S16->SizeSurf >> 1;
+                    for (int currIdx=0; currIdx < maxSize ; currIdx++) {
+                        *outPoint++ = RGB16(inData[2], inData[1], inData[0]);
+                        inData += 3;
                     }
                     break;
-                case AV_PIX_FMT_RGBA:
-                    for (int i=0; i < S16->SizeSurf /2 ; i++) {
-                        ((unsigned short*)S16->rlfb)[i] = RGB16(videoFrame->data[0][i*4+0], videoFrame->data[0][i*4+1], videoFrame->data[0][i*4+2]);
+                }
+                case AV_PIX_FMT_RGBA: {
+                    unsigned short* outPoint = (unsigned short*)S16->rlfb;
+                    unsigned char* inData = videoFrame->data[0];
+                    int maxSize = S16->SizeSurf >> 1;
+                    for (int currIdx=0; currIdx < maxSize ; currIdx++) {
+                        *outPoint++ = RGB16(inData[0], inData[1], inData[2]);
+                        inData += 4;
                     }
                     break;
-                case AV_PIX_FMT_BGRA:
-                    for (int i=0; i < S16->SizeSurf /2 ; i++) {
-                        ((unsigned short*)S16->rlfb)[i] = RGB16(videoFrame->data[0][i*4+2], videoFrame->data[0][i*4+1], videoFrame->data[0][i*4+0]);
+                }
+                case AV_PIX_FMT_BGRA: {
+                    unsigned short* outPoint = (unsigned short*)S16->rlfb;
+                    unsigned char* inData = videoFrame->data[0];
+                    int maxSize = S16->SizeSurf >> 1;
+                    for (int currIdx=0; currIdx < maxSize ; currIdx++) {
+                        *outPoint++ = RGB16(inData[2], inData[1], inData[0]);
+                        inData += 4;
                     }
                     break;
+                }
                 default:
                     DgSurf saveSurf;
                     DgGetCurSurf(&saveSurf);
@@ -2095,7 +2116,6 @@ int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop) {
     VidVideoEnded=true; // we reached the end
     return 0;
 }
-
 
 
 
