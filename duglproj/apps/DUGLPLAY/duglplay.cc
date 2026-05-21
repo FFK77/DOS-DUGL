@@ -267,8 +267,8 @@ int FFZone = 0, FFFail = 0;
 char soundDriverFileName[256] = "sb16.drv";
 //#define AUDIO_RING_SIZE 16
 DVoice **audioRing = NULL;
-int AUDIO_RING_SIZE = 16;
-int MaxVoicesRingCount = 6;
+int AUDIO_RING_SIZE = 32;
+int MaxVoicesRingCount = 16;
 int audioRingStart = 0;
 int audioRingCount = 0;
 int audioFrameSamples = 0;
@@ -1767,9 +1767,9 @@ int OpenVideoFFMPEG(char *FileName) {
     /* Init the decoders */
 
     // loop filter consumes too much CPU power on old hardware
-	pVideoCodecCtx->skip_loop_filter = AVDISCARD_ALL;
+	 pVideoCodecCtx->skip_loop_filter = AVDISCARD_ALL;
 	// Skip inverse DCT for non reference frames
-	// pVideoCodecCtx->skip_idct = AVDISCARD_NONREF;
+	 pVideoCodecCtx->skip_idct = AVDISCARD_NONREF;
 	pVideoCodecCtx->thread_count = 1;
 
     if (avcodec_open2(pVideoCodecCtx, pVideoCodec, NULL) < 0) {
@@ -2182,9 +2182,15 @@ int GetNextAudioFrameFFMPEG() {
                         if (audioRingCount<AUDIO_RING_SIZE) {
                                 audioRingCount++;
                         } else {
-                            // ring buffer full overwrite oldest voice
+                            // ring buffer full
+                            // avoids overwriting audio slots that are still being used
                             countRingOverWritten ++;
-                            audioRingStart++; if (audioRingStart >= AUDIO_RING_SIZE) audioRingStart = 0;
+                            int candidateSlot = audioRingStart;
+                            if (candidateSlot != audioLastAddIdx && candidateSlot != audioLastQueueIdx) {
+                                audioRingStart++;
+                                if (audioRingStart >= AUDIO_RING_SIZE) audioRingStart = 0;
+                                countRingOverWritten++;
+                             }
                         }
                         // copy remaining required data into current Voice
                         int remainCopy = voiByteSz - curVoicePos;
