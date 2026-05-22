@@ -290,7 +290,7 @@ bool Audio16Bits = false,
      AudioMuted = false,
      AboutDebugInfo = false;
 int AudioSamplingSpeed = 22000;
-int VoiceSampleSize = 8000;
+int VoiceSampleSize = 16384;
 int MasterAudioVolume = 230;
 int VoiceAudioVolume = 230;
 int OutGainAudioVolume = 230;
@@ -1879,8 +1879,6 @@ int OpenAudioFFMPEG(char *FileName) {
                         av_channel_layout_default(&outLayout, (AudioStereo) ? 2 : 1);
                         int dst_linesize = 0;
 
-
-
                         // allocate audio dest resample buffers (rounded by 1024)
                         max_dst_nb_samples = ((VoiceSampleSize/1024)+1)*1024;
                         if (av_samples_alloc_array_and_samples(&audio_dst_data, &audio_dst_linesize, (Audio16Bits) ? 2 : 1,
@@ -2137,9 +2135,103 @@ int GetNextAudioFrameFFMPEG() {
             retOpenAudio = 1;
 
             if (pktAudio->stream_index == audioStreamIndex) {
-                avcodec_send_packet(pAudioCodecCtx, pktAudio);
-                retOpenAudio = 2;
-                while (avcodec_receive_frame(pAudioCodecCtx, audioFrame) >= 0) {
+                int send_ret = avcodec_send_packet(pAudioCodecCtx, pktAudio);
+
+            if (send_ret == AVERROR(EAGAIN)) {
+
+                //  Decoder zuerst vollständig drainieren
+                while (1) {
+
+                    int recv_ret = avcodec_receive_frame(pAudioCodecCtx, audioFrame);
+
+                    if (recv_ret == AVERROR(EAGAIN) || recv_ret == AVERROR_EOF) {
+                        break;
+                    }
+
+                    if (recv_ret < 0) {
+                        av_frame_unref(audioFrame);
+                        break;
+                    }
+
+                    static int typeToSampleSize[] = { 1, 2, 2, 4 };
+                    int curVoiceOneSample = typeToSampleSize[audioRing[0]->Type];
+
+                    int out_samples = swr_get_out_samples(
+                        au_convert_ctx,
+                        audioFrame->nb_samples
+                    );
+
+                    int dst_nb_samples = ((out_samples >> 10) + 1) << 10;
+
+                    if (dst_nb_samples > max_dst_nb_samples) {
+
+                        av_freep(&audio_dst_data[0]);
+
+                        if (av_samples_alloc(
+                                audio_dst_data,
+                                &audio_dst_linesize,
+                                (Audio16Bits) ? 2 : 1,
+                                dst_nb_samples,
+                                (Audio16Bits)
+                                    ? AV_SAMPLE_FMT_S16
+                                    : AV_SAMPLE_FMT_U8,
+                                1) < 0)
+                        {
+                            av_frame_unref(audioFrame);
+                            av_packet_unref(pktAudio);
+                            return 0;
+                        }
+
+                        max_dst_nb_samples = dst_nb_samples;
+                    }
+
+                    int outframes = swr_convert(
+                        au_convert_ctx,
+                        audio_dst_data,
+                        max_dst_nb_samples,
+                        (const uint8_t**)audioFrame->data,
+                        audioFrame->nb_samples
+                    );
+
+                    if (outframes > 0) {
+                        countAudFrameDecoded++;
+                    } else {
+                        av_frame_unref(audioFrame);
+                        continue;
+                    }
+
+                    av_frame_unref(audioFrame);
+                }
+
+                // Danach Paket erneut senden
+                send_ret = avcodec_send_packet(pAudioCodecCtx, pktAudio);
+            }
+
+            if (send_ret < 0 && send_ret != AVERROR_EOF) {
+
+                // ungpltiges Paket sauber verwerfen
+                av_packet_unref(pktAudio);
+                continue;
+            }
+
+            retOpenAudio = 2;
+
+            // Normaler Decode-Loop
+            while (1) {
+
+                int recv_ret = avcodec_receive_frame(pAudioCodecCtx, audioFrame);
+
+                if (recv_ret == AVERROR(EAGAIN) ||
+                    recv_ret == AVERROR_EOF)
+                {
+                    break;
+                }
+
+                if (recv_ret < 0) {
+                    av_frame_unref(audioFrame);
+                    break;
+                }
+
                     static int typeToSampleSize[] = { 1, 2, 2, 4 };
                     int curVoiceOneSample = typeToSampleSize[audioRing[0]->Type];
 
