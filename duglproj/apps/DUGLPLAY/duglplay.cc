@@ -639,6 +639,15 @@ int main (int argc, char ** argv) {
                     if (SndDrv->IsPlayingVoice(audioRing[audioLastQueueIdx])) {
                         audioLastAddIdx = audioLastQueueIdx;
                         audioLastQueueIdx = -1;
+                        if (audioRingCount > 0) {
+                            if (QueueVoice(audioRing[audioLastAddIdx],
+                                           audioRing[audioRingStart], 0, true, false)) {
+                                audioLastQueueIdx = audioRingStart;
+                                countRingQueued++;
+                                audioRingCount--;
+                                audioRingStart = (audioRingStart + 1) % AUDIO_RING_SIZE;
+                            }
+                        }
                     } else {
                         audioLastQueueIdx = -1;
                     }
@@ -2122,6 +2131,54 @@ int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop) {
     return 0;
 }
 
+// Helper: Pack 'outframes' samples from audio_dst_data[0] into the ring buffer.
+// Uses and updates global curVoicePos, audioRingStart, audioRingCount.
+// Returns true if at least one new ring slot was completed.
+static bool packAudioSamplesToRing(int outframes) {
+    if (outframes <= 0 || audioRing == NULL) return false;
+
+    static int typeToSampleSize[] = { 1, 2, 2, 4 };
+    int curVoiceOneSample = typeToSampleSize[audioRing[0]->Type];
+    int outBytes  = outframes * curVoiceOneSample;
+    int voiByteSz = VoiceSampleSize * curVoiceOneSample;
+    bool slotCompleted = false;
+    int  copyOffset = 0;
+
+    while (outBytes > 0) {
+        int LastVoiceIdx = audioRingStart + audioRingCount;
+        if (LastVoiceIdx >= AUDIO_RING_SIZE) LastVoiceIdx -= AUDIO_RING_SIZE;
+
+        int spaceLeft = voiByteSz - curVoicePos;
+        int toCopy    = (outBytes < spaceLeft) ? outBytes : spaceLeft;
+
+        uint8_t *PtrDest = (uint8_t *)audioRing[LastVoiceIdx]->Ptr;
+        memcpy(&PtrDest[curVoicePos], &((uint8_t*)audio_dst_data[0])[copyOffset], toCopy);
+        curVoicePos += toCopy;
+        copyOffset  += toCopy;
+        outBytes    -= toCopy;
+
+        if (curVoicePos >= voiByteSz) {
+            // slot is full — advance ring
+            curVoicePos = 0;
+            slotCompleted = true;
+            if (audioRingCount < AUDIO_RING_SIZE) {
+                audioRingCount++;
+            } else {
+                // Ring full: drop oldest non-playing slot
+                int candidateSlot = audioRingStart;
+                if (candidateSlot != audioLastAddIdx && candidateSlot != audioLastQueueIdx) {
+                    audioRingStart++;
+                    if (audioRingStart >= AUDIO_RING_SIZE) audioRingStart = 0;
+                    countRingOverWritten++;
+                } else {
+                    break; // can't overwrite active slot, stop
+                }
+            }
+        }
+    }
+    return slotCompleted;
+}
+
 int GetNextAudioFrameFFMPEG() {
     int ret_av = 0;
     int retfunc = 0;
@@ -2270,56 +2327,24 @@ int GetNextAudioFrameFFMPEG() {
                     int outBytes = outframes * curVoiceOneSample; int voiByteSz = VoiceSampleSize * curVoiceOneSample;
 
                     if (curVoicePos + outBytes >= voiByteSz) {
-
-                        if (audioRingCount<AUDIO_RING_SIZE) {
-                                audioRingCount++;
-                        } else {
-                            // ring buffer full
-                            // avoids overwriting audio slots that are still being used
-                            countRingOverWritten ++;
-                            int candidateSlot = audioRingStart;
-                            if (candidateSlot != audioLastAddIdx && candidateSlot != audioLastQueueIdx) {
-                                audioRingStart++;
-                                if (audioRingStart >= AUDIO_RING_SIZE) audioRingStart = 0;
-                                countRingOverWritten++;
-                             }
+                        if (outframes > 0) {
+                            if (packAudioSamplesToRing(outframes))
+                                voiceAdded = true;
                         }
-                        // copy remaining required data into current Voice
-                        int remainCopy = voiByteSz - curVoicePos;
 
-                        // completely fill last voice
-                        uint8_t *PtrDest = (uint8_t *)audioRing[LastVoiceIdx]->Ptr;
-                        if (remainCopy > 0) {
-                            memcpy(&PtrDest[curVoicePos], audio_dst_data[0], remainCopy);
-                        }
-                        int16_t *genPtr = (int16_t *)audioRing[LastVoiceIdx]->Ptr;
-
-                        curVoicePos = outBytes - remainCopy;
-                        LastVoiceIdx = audioRingStart + audioRingCount; if (LastVoiceIdx >= AUDIO_RING_SIZE) LastVoiceIdx -= AUDIO_RING_SIZE;
-                        // handle case where outframes bigger than VoiceSampleSize
-                        int copyOffset = remainCopy; while (curVoicePos >= voiByteSz) {
-                            // printf("debug curVoicePos: %d\n", curVoicePos);
-                            memcpy(audioRing[LastVoiceIdx]->Ptr, &audio_dst_data[0][copyOffset], voiByteSz);
-                            copyOffset += voiByteSz;
-                            curVoicePos -= voiByteSz;
-
-                            if (audioRingCount<AUDIO_RING_SIZE) {
-                                    audioRingCount++;
-                            } else {
-                                // ring buffer full: overwrite oldest voice
-                                countRingOverWritten ++;
-                                audioRingStart++; if (audioRingStart >= AUDIO_RING_SIZE) audioRingStart = 0;
+                        {
+                            int delay = (int)swr_get_delay(au_convert_ctx, iOutputSampleRate);
+                            while (delay > 0) {
+                                int flushOut = swr_convert(au_convert_ctx,
+                                                           audio_dst_data, max_dst_nb_samples,
+                                                           NULL, 0);
+                                if (flushOut <= 0) break;
+                                if (packAudioSamplesToRing(flushOut))
+                                    voiceAdded = true;
+                                delay = (int)swr_get_delay(au_convert_ctx, iOutputSampleRate);
                             }
-                            LastVoiceIdx = audioRingStart + audioRingCount; if (LastVoiceIdx >= AUDIO_RING_SIZE) LastVoiceIdx -= AUDIO_RING_SIZE;
                         }
-                        // last chunk ?
-                        if (curVoicePos > 0) {
-                            memset(audioRing[LastVoiceIdx]->Ptr, 0, audioRing[LastVoiceIdx]->Size);
-                            memcpy(audioRing[LastVoiceIdx]->Ptr, &audio_dst_data[0][copyOffset], curVoicePos);
-                        }
-
-                        retOpenAudio = 9;
-                        voiceAdded = true;
+                    av_frame_unref(audioFrame);
                     } else if (outBytes > 0) {
                         uint8_t *PtrDest = (uint8_t *)audioRing[LastVoiceIdx]->Ptr;
                         memcpy(&PtrDest[curVoicePos], audio_dst_data[0], outBytes);
