@@ -161,7 +161,7 @@ char startdir[PATH_MAX]= "";
 unsigned char palette[1024];
 String CurVidFile;
 
-//***** VIDEO GLOBAL
+// ***** VIDEO GLOBAL
 typedef struct {
   unsigned char *y;
   unsigned char *u;
@@ -334,7 +334,7 @@ void DestroyFFMPEG();
 // close an opened video
 void CloseVidFFMPEG();
 
-//******************
+// ******************
 // FONT
 DFONT F1;
 // mouse View
@@ -428,7 +428,7 @@ GraphBox *GphBAbout;
 Button *BtOkAbout;
 // events
 void BtOkAboutClick(),GphBDrawAbout(GraphBox *Me),OnGphBScanAbout(GraphBox *Me);
-//******* Global function ****************************
+// ******* Global function ****************************
 // return 0 if success, code error if failed
 int OpenVid(char *FileName);
 // return 1 if new frame found, 0 else
@@ -561,7 +561,7 @@ int main (int argc, char ** argv) {
        DestroySurf(MsPtr);
     }
 
-    //** GUI ************************************************
+    // ** GUI ************************************************
     // create the winHandler
     WH = new WinHandler(screenX,screenY,16,0xF|(0x1F<<5));
     //---- Main Window
@@ -601,7 +601,7 @@ int main (int argc, char ** argv) {
     GphBAbout->ScanGraphBox=OnGphBScanAbout;
     BtOkAbout=new Button(115,3,275,25,MWAbout,"Ok",1,0);
     BtOkAbout->Click=BtOkAboutClick;
-    //*******************************************************
+    // *******************************************************
 
     // init synch for synching the screen and the opened video
     PosSynch=0;
@@ -649,31 +649,59 @@ int main (int argc, char ** argv) {
                             }
                         }
                     } else {
-                        audioLastQueueIdx = -1;
+                                audioLastQueueIdx = -1;
+                            }
                     }
-                  }
-              }
+             }
+        }
+        if (audioRingCount > 0) {
+            if (audioLastAddIdx == -1) {
+                AddVoice(audioRing[audioRingStart], 0, true);
+                audioLastAddIdx = audioRingStart;
+                audioLastQueueIdx = -1;
+                countRingAdd++;
+                audioRingCount--;
+                audioRingStart=(audioRingStart+1)%AUDIO_RING_SIZE;
+            }
+            if (audioRingCount > 0) {
+                if (audioLastAddIdx == -1 &&
+                audioLastQueueIdx == -1) {
 
-              if (audioRingCount > 0) {
-                if (audioLastAddIdx == -1) {
-                    AddVoice(audioRing[audioRingStart], 0, true);
-                    audioLastAddIdx = audioRingStart;
-                    audioLastQueueIdx = -1;
-                    countRingAdd++;
-                    audioRingCount--;
-                    audioRingStart=(audioRingStart+1)%AUDIO_RING_SIZE;
-                }
-                if (audioRingCount > 0 && audioLastAddIdx != -1) {
-                    if (QueueVoice(audioRing[audioLastAddIdx],audioRing[audioRingStart], 0, true, false)) {
-                        audioLastQueueIdx = audioRingStart;
-                        countRingQueued++;
-                        audioRingCount--;
-                        audioRingStart=(audioRingStart+1)%AUDIO_RING_SIZE;
-                        if (!VidOpenHasVideo) {
-                            UpdatePlayTime();
-                        }
+                AddVoice(audioRing[audioRingStart], 0, true);
+
+                audioLastAddIdx = audioRingStart;
+                audioLastQueueIdx = -1;
+
+                countRingAdd++;
+
+                audioRingCount--;
+                audioRingStart = (audioRingStart + 1) % AUDIO_RING_SIZE;
+            }
+
+            if (audioRingCount > 0 &&
+                audioLastAddIdx != -1 &&
+                audioLastQueueIdx == -1) {
+
+                if (QueueVoice(audioRing[audioLastAddIdx],
+                               audioRing[audioRingStart],
+                               0, true, false)) {
+
+                                                audioLastQueueIdx = audioRingStart;
+
+                                                countRingQueued++;
+
+                                                audioRingCount--;
+                                                audioRingStart = (audioRingStart + 1) % AUDIO_RING_SIZE;
+
+                                                if (!VidOpenHasVideo) {
+                                                    UpdatePlayTime();
+                                                }
+                                            }
+
+
+
                     }
-                }
+
               }
               // handle curve display
               if (DisplaySoundCurve && !VidOpenHasVideo) {
