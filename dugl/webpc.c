@@ -11,6 +11,7 @@ int LoadWEBP16(DgSurf **S,char *filename) {
     DFileBuffer* imgFBuff = CreateMemDFileBufferFromFile(filename, "rb");
     if (imgFBuff != NULL) {
         retGet = LoadMemWEBP16(S, (void*)imgFBuff->m_data, (int)imgFBuff->m_bytesInBuff);
+        DestroyDFileBuffer(imgFBuff);
     } //else printf("failed reading '%s'\n", filename);
 
     return retGet;
