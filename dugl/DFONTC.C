@@ -11,7 +11,7 @@
 #include <string.h>
 #include <sys/movedata.h>
 #include <sys/segments.h>
-#include "dugl.h"
+#include "DUGL.h"
 #include "intrdugl.h"
 
 //********************** FONT

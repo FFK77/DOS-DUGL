@@ -4,7 +4,7 @@
 #include <sys/movedata.h>
 #include <dpmi.h>
 #include <go32.h>
-#include "dugl.h"
+#include "DUGL.h"
 #include "intrdugl.h"
 
 unsigned short IPXMaxPacketSize=0;
@@ -124,7 +124,7 @@ int  GetECB(IPXECB *ECB) {
    ECB->CompletitionCode=RmECB.CompletitionCode;
    ECB->Socket=RmECB.Socket; ReverseBuffBytes(&ECB->Socket,sizeof(IPXSocket));
    ECB->ImmediateAddress=RmECB.ImmediateAddress; ReverseBuffBytes(&ECB->ImmediateAddress,sizeof(IPXNode));
-   
+
    ECB->Packet.Checksum=RmECB.RmPacket.Checksum; ReverseBuffBytes(&ECB->Packet.Checksum,sizeof(unsigned short));
    ECB->Packet.Length=RmECB.RmPacket.Length; ReverseBuffBytes(&ECB->Packet.Length,sizeof(unsigned short));
    ECB->Packet.TransportControl=RmECB.RmPacket.TransportControl;
@@ -151,7 +151,7 @@ int IPXSendPacket(IPXECB *ECB,IPXNetwork *Network,IPXNode *Node,IPXSocket *Socke
                   unsigned char Type,void *Data,unsigned short SizeData) {
    RmIPXECB RmECB;
    __dpmi_regs r;
-   
+
    if (ECB->Sign!='BCEV' || SizeData>ECB->MaxSize) return 0;
    dosmemget(ECB->SegRmECB*16,sizeof(RmIPXECB),&RmECB);
    bzero(&RmECB.RmPacket,sizeof(RmIPXPacket));

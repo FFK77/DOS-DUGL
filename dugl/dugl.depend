@@ -1,0 +1,115 @@
+# depslib dependency file v1.0
+1779294840 source:/home/tho/dev/DOS_DUGL/dugl/bmfontc.c
+	<stdarg.h>
+	<stdio.h>
+	<stdlib.h>
+	<string.h>
+	"DUGL.h"
+
+1779294840 /home/tho/dev/DOS_DUGL/dugl/DUGL.h
+	<stdbool.h>
+	<stdint.h>
+	<pthread.h>
+	"DGraph.h"
+	"DFONT.h"
+	"DKeyb.h"
+	"DMouse.h"
+	"DTimer.h"
+	"DMATH3D.h"
+	"DWORKER.h"
+	"DCONTAIN.h"
+	"DBMFONT.h"
+	"DIMAGE.H"
+	"DIPX.H"
+
+1779294840 /home/tho/dev/DOS_DUGL/dugl/DGraph.h
+
+1779294840 /home/tho/dev/DOS_DUGL/dugl/DFONT.h
+
+1779294840 /home/tho/dev/DOS_DUGL/dugl/DKeyb.h
+
+1779294840 /home/tho/dev/DOS_DUGL/dugl/DMouse.h
+
+1779294840 /home/tho/dev/DOS_DUGL/dugl/DTimer.h
+
+1779294840 /home/tho/dev/DOS_DUGL/dugl/DMATH3D.h
+
+1779294840 /home/tho/dev/DOS_DUGL/dugl/DWORKER.h
+
+1779294840 /home/tho/dev/DOS_DUGL/dugl/DCONTAIN.h
+
+1779294840 /home/tho/dev/DOS_DUGL/dugl/DBMFONT.h
+
+1779294840 /home/tho/dev/DOS_DUGL/dugl/DIMAGE.H
+
+1779294840 /home/tho/dev/DOS_DUGL/dugl/DIPX.H
+
+1779294840 source:/home/tho/dev/DOS_DUGL/dugl/containc.c
+	<stdio.h>
+	<stdlib.h>
+	<string.h>
+	<stdbool.h>
+	"DUGL.h"
+	"intrdugl.h"
+
+1779294840 /home/tho/dev/DOS_DUGL/dugl/intrdugl.h
+
+1779529264 source:/home/tho/dev/DOS_DUGL/dugl/CONTROLC.C
+	<dos.h>
+	<dpmi.h>
+	<dos.h>
+	<go32.h>
+	<stdio.h>
+	<stdlib.h>
+	<conio.h>
+	<crt0.h>
+	<unistd.h>
+	<string.h>
+	<sys/movedata.h>
+	<sys/segments.h>
+	"DUGL.h"
+	"intrdugl.h"
+
+1779294840 source:/home/tho/dev/DOS_DUGL/dugl/math3dc.c
+	<stdio.h>
+	<stdlib.h>
+	<stdbool.h>
+	<math.h>
+	<string.h>
+	"DUGL.h"
+
+1779529289 source:/home/tho/dev/DOS_DUGL/dugl/DFONTC.C
+	<dos.h>
+	<dpmi.h>
+	<dos.h>
+	<go32.h>
+	<stdio.h>
+	<stdlib.h>
+	<stdarg.h>
+	<conio.h>
+	<crt0.h>
+	<unistd.h>
+	<string.h>
+	<sys/movedata.h>
+	<sys/segments.h>
+	"DUGL.h"
+	"intrdugl.h"
+
+1779529306 source:/home/tho/dev/DOS_DUGL/dugl/ipxc.c
+	<stdio.h>
+	<stdlib.h>
+	<string.h>
+	<sys/movedata.h>
+	<dpmi.h>
+	<go32.h>
+	"DUGL.h"
+	"intrdugl.h"
+
+1779294840 source:/home/tho/dev/DOS_DUGL/dugl/workerc.c
+	<stdio.h>
+	<stdlib.h>
+	<stdbool.h>
+	<string.h>
+	"DUGL.h"
+	"intrdugl.h"
+

@@ -10,7 +10,7 @@
 #include <string.h>
 #include <sys/movedata.h>
 #include <sys/segments.h>
-#include "dugl.h"
+#include "DUGL.h"
 #include "intrdugl.h"
 
 
@@ -33,7 +33,7 @@ int  LoadMemPCX(DgSurf **S,void *In,void *PalBGR1024,int SizeIn)
 	if (!CreateSurf(S,ResHz,ResVt,8))
         return 0;
 	if (hpcx.Comp==1)
-	   InRLE(In+sizeof(HeadPCX),(*S)->rlfb,(*S)->SizeSurf);
+	   InRLE(In+sizeof(HeadPCX), (unsigned char *)((*S)->rlfb), (*S)->SizeSurf);
 	else
         return 0;
 	return 1;
@@ -73,7 +73,7 @@ int  LoadPCX(DgSurf **S,const char *Fname,void *PalBGR1024)
 			return 0;
 		}
 		fread(BuffIn,FinIn-sizeof(HeadPCX)+1,1,InPCX);
-		InRLE(BuffIn,(*S)->rlfb,ResHz*ResVt);
+		InRLE(BuffIn,(unsigned char *)(*S)->rlfb,ResHz*ResVt);
 	 }
 	 else {
 	   fclose(InPCX);
@@ -224,7 +224,7 @@ int  LoadMemGIF(DgSurf **S,void *In,void *PalBGR1024,int SizeIn)
 	   BuffS+=SizeBl;
 	   BuffD+=SizeBl;
 	  }
-	InLZW(BuffIn+2,(*S)->rlfb);
+	InLZW(BuffIn+2, (void *)((*S)->rlfb));
 	free(BuffIn);
 	return 1;
 }
@@ -302,7 +302,7 @@ int  LoadGIF(DgSurf **S,const char *Fname,void *PalBGR1024)
 	   BuffS+=SizeBl;
 	   BuffD+=SizeBl;
 	  }
-	InLZW(BuffIn+2,(*S)->rlfb);
+	InLZW(BuffIn+2, (void *)((*S)->rlfb));
 	free(BuffIn); fclose(InGIF);
 	return 1;
 }
@@ -528,7 +528,7 @@ int  SaveBMP(DgSurf *S,const char *Fname,void *PalBGR1024) {
 	// write data
 	if (tempLine!=NULL) {
 	  for (j=ibmp.ImgHeight-1;j>=0;j--) {
-	    Linedata=(char*)(S->rlfb+(j*ibmp.ImgWidth));
+        Linedata = (short *)(S->rlfb + (j * ibmp.ImgWidth));
 	    memcpy(tempLine,Linedata,ibmp.ImgWidth);
 	    fwrite(tempLine,sizeline,1,OutBMP);
 	  }
