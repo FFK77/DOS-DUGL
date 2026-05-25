@@ -3,8 +3,8 @@
 #include <conio.h>
 #include <unistd.h>
 #include <string.h>
-#include <dugl.h>
-#include "dgui.h"
+#include <DUGL.h>
+#include "DGUI.H"
 
 //**************** class ListString *******************************
 //*****************************************************************

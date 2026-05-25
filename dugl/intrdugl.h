@@ -4,7 +4,7 @@
 #define	Preserve	0x8000
 
 #define	SuppMode	1
-#define	Col		8
+//#define	Col		8
 #define	graph		16
 #define	SuppLFB		128
 

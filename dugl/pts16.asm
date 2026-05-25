@@ -1,4 +1,4 @@
-ALIGN 32
+ALIGN 16
 _PutSurf16:
 	ARG	SSN16, 4, XPSN16, 4, YPSN16, 4, PSType16, 4
 		PUSH		EBX
@@ -320,7 +320,7 @@ _PutSurf16:
 ; PUT masked Surf
 ;*****************
 
-ALIGN 32
+ALIGN 16
 _PutMaskSurf16:
 	ARG	MSSN16, 4, MXPSN16, 4, MYPSN16, 4, MPSType16, 4
 		PUSH		EBX
@@ -643,7 +643,7 @@ _PutMaskSurf16:
 
 		MOVD		EDX,mm0  ; DeltaX
 		TEST		BYTE [PType],1
-		JNZ     	.CInvHzPSurf
+		JNZ        .CInvHzPSurf
 		ADD			[Plus],EAX
 		JMP			.BcPutSurf
 
@@ -658,7 +658,7 @@ _PutMaskSurf16:
 ; -------------------------------
 ; Put a Surf blended with a color
 ; -------------------------------
-ALIGN 32
+ALIGN 16
 _PutSurfBlnd16:
 	ARG	SSBN16, 4, XPSBN16, 4, YPSBN16, 4, PSBType16, 4, PSBCol16, 4
 		PUSH		EBX
@@ -707,21 +707,21 @@ _PutSurfBlnd16:
 		MOV			ECX,EAX
 		MOV			EDX,EBX
 
-		MOV     	ESI,[EBP+PSBType16]
-		TEST   		ESI,1
-		JZ      	SHORT .NormHzPut
-		SUB     	EAX,[SMinX]
-		SUB     	ECX,[SMaxX]
-		JMP     	SHORT .InvHzPut
+		MOV         ESI,[EBP+PSBType16]
+		TEST        ESI,1
+		JZ          SHORT .NormHzPut
+		SUB         EAX,[SMinX]
+		SUB         ECX,[SMaxX]
+		JMP         SHORT .InvHzPut
 .NormHzPut:
 		ADD			EAX,[SMaxX] ; EAX = PutMaxX
 		ADD			ECX,[SMinX] ; ECX = PutMinX
 .InvHzPut:
-		TEST    	ESI,2
-		JZ      	SHORT .NormVtPut
-		SUB     	EBX,[SMinY]
-		SUB     	EDX,[SMaxY]
-		JMP     	SHORT .InvVtPut
+		TEST        ESI,2
+		JZ          SHORT .NormVtPut
+		SUB         EBX,[SMinY]
+		SUB         EDX,[SMaxY]
+		JMP         SHORT .InvVtPut
 .NormVtPut:
 		ADD			EBX,[SMaxY] ; EBX = PutMaxY
 		ADD			EDX,[SMinY] ; EDX = PutMinY
@@ -947,7 +947,7 @@ _PutSurfBlnd16:
 		CMP			EAX,EBP      ; XP2>_MaxX
 		JLE			.PsSupMaxX
 		TEST		BYTE [PType],1
-        JZ			.PsInvHzCalcDX
+		JZ			.PsInvHzCalcDX
 		MOV			ESI,EAX
 		SUB			ESI,EBP	; ESI = XP2 - _MaxX
 .PsInvHzCalcDX:
@@ -1007,7 +1007,7 @@ _PutSurfBlnd16:
 		JMP			.IBcPutSurf
 
 
-ALIGN 32
+ALIGN 16
 _SurfCopyBlnd16:
 	ARG	PDstSrfB, 4, PSrcSrfB, 4, SCBCol, 4
 		PUSH		EDI
@@ -1107,7 +1107,7 @@ _SurfCopyBlnd16:
 ; =======================================
 ; Put a MASKED Surf blended with a color
 ; =======================================
-ALIGN 32
+ALIGN 16
 _PutMaskSurfBlnd16:
 	ARG	MSSBN16, 4, MXPSBN16, 4, MYPSBN16, 4, MPSBType16, 4, MPSBCol16, 4
 		PUSH		EBX
@@ -1444,7 +1444,7 @@ _PutMaskSurfBlnd16:
 		CMP			EAX,EBP      ; XP2>_MaxX
 		JLE			.PsSupMaxX
 		TEST		BYTE [PType],1
-		JZ			.PsInvHzCalcDX
+        JZ			.PsInvHzCalcDX
 		MOV			ESI,EAX
 		SUB			ESI,EBP	; ESI = XP2 - _MaxX
 .PsInvHzCalcDX:
@@ -1504,7 +1504,7 @@ _PutMaskSurfBlnd16:
 		JMP			.IBcPutSurf
 
 
-ALIGN 32
+ALIGN 16
 _SurfMaskCopyBlnd16:
 	ARG	PDstSrfMB, 4, PSrcSrfMB, 4, SCMBCol, 4
 		PUSH		EDI
@@ -1660,7 +1660,7 @@ _SurfMaskCopyBlnd16:
 ; Put a Transparent Surf
 ; -------------------------------
 
-ALIGN 32
+ALIGN 16
 _PutSurfTrans16:
 	ARG	SSTN16, 4, XPSTN16, 4, YPSTN16, 4, PSTType16, 4, PSTrans16, 4
 		PUSH		EBX
@@ -2019,7 +2019,7 @@ _PutSurfTrans16:
 
 
 
-ALIGN 32
+ALIGN 16
 _SurfCopyTrans16:
 	ARG	PDstSrfT, 4, PSrcSrfT, 4, SCTrans, 4
 		PUSH		EDI
@@ -2115,7 +2115,7 @@ _SurfCopyTrans16:
 ; Put a Masked Transparent Surf
 ; -------------------------------
 
-ALIGN 32
+ALIGN 16
 _PutMaskSurfTrans16:
 	ARG	SMSTN16, 4, XPMSTN16, 4, YPMSTN16, 4, PMSTType16, 4, PMSTrans16, 4
 		PUSH		EBX
@@ -2443,7 +2443,7 @@ _PutMaskSurfTrans16:
 		JLE			.PsSupMaxY   ; YP2>_MaxY
 		MOV			EDI,EBP
 		NEG			EDI
-		;MOV			[YP2],EBP
+		;MOV		[YP2],EBP
 		ADD			EDI,EBX
 		MOV			EBX,EBP
 .PsSupMaxY:
@@ -2516,7 +2516,7 @@ _PutMaskSurfTrans16:
 		JMP			.IBcPutSurf
 
 
-ALIGN 32
+ALIGN 16
 _SurfMaskCopyTrans16:
 	ARG	PDstSrfMT, 4, PSrcSrfMT, 4, SCMTrans, 4
 		PUSH		EDI
@@ -2632,4 +2632,3 @@ _SurfMaskCopyTrans16:
 		POP		ESI
 		POP		EDI
 	MMX_RETURN
-

@@ -185,7 +185,7 @@ void jpeg_memory_src(j_decompress_ptr cinfo, unsigned char const *buffer, size_t
         }
         src = (void *)cinfo->src;
         src->pub.init_source = init_source;
-        src->pub.fill_input_buffer = fill_input_buffer;
+        src->pub.fill_input_buffer = (boolean (*)(struct jpeg_decompress_struct *))fill_input_buffer;
         src->pub.skip_input_data = skip_input_data;
         src->pub.resync_to_restart = jpeg_resync_to_restart;
         src->pub.term_source = term_source;

@@ -102,9 +102,10 @@
 #include <ctype.h>
 #include <dir.h>
 #include <math.h>
+#include <dpmi.h>
 
-#include <dugl.h>
-#include <duglplus.h>
+#include <DUGL.h>
+#include <DUGLPLUS.H>
 
 #ifdef __cplusplus
 extern "C" {
@@ -129,7 +130,7 @@ static int cptLog = 0;
 #define FLOG(formatMsg, ...) { \
     FILE *LOGFILE = fopen("./log.txt", "at");\
     if (LOGFILE!=NULL) {\
-        fprintf(LOGFILE, formatMsg, __VA_ARGS__);\
+        fprintf(LOGFILE, formatMsg, ##__VA_ARGS__);\
         fclose(LOGFILE);\
         cptLog++; \
     }\
@@ -160,7 +161,7 @@ char startdir[PATH_MAX]= "";
 unsigned char palette[1024];
 String CurVidFile;
 
-//***** VIDEO GLOBAL
+// ***** VIDEO GLOBAL
 typedef struct {
   unsigned char *y;
   unsigned char *u;
@@ -266,8 +267,8 @@ int FFZone = 0, FFFail = 0;
 char soundDriverFileName[256] = "sb16.drv";
 //#define AUDIO_RING_SIZE 16
 DVoice **audioRing = NULL;
-int AUDIO_RING_SIZE = 6;
-int MaxVoicesRingCount = 2;
+int AUDIO_RING_SIZE = 32;
+int MaxVoicesRingCount = 16;
 int audioRingStart = 0;
 int audioRingCount = 0;
 int audioFrameSamples = 0;
@@ -289,7 +290,7 @@ bool Audio16Bits = false,
      AudioMuted = false,
      AboutDebugInfo = false;
 int AudioSamplingSpeed = 22000;
-int VoiceSampleSize = 8000;
+int VoiceSampleSize = 16384;
 int MasterAudioVolume = 230;
 int VoiceAudioVolume = 230;
 int OutGainAudioVolume = 230;
@@ -333,7 +334,7 @@ void DestroyFFMPEG();
 // close an opened video
 void CloseVidFFMPEG();
 
-//******************
+// ******************
 // FONT
 DFONT F1;
 // mouse View
@@ -427,7 +428,7 @@ GraphBox *GphBAbout;
 Button *BtOkAbout;
 // events
 void BtOkAboutClick(),GphBDrawAbout(GraphBox *Me),OnGphBScanAbout(GraphBox *Me);
-//******* Global function ****************************
+// ******* Global function ****************************
 // return 0 if success, code error if failed
 int OpenVid(char *FileName);
 // return 1 if new frame found, 0 else
@@ -560,7 +561,7 @@ int main (int argc, char ** argv) {
        DestroySurf(MsPtr);
     }
 
-    //** GUI ************************************************
+    // ** GUI ************************************************
     // create the winHandler
     WH = new WinHandler(screenX,screenY,16,0xF|(0x1F<<5));
     //---- Main Window
@@ -600,7 +601,7 @@ int main (int argc, char ** argv) {
     GphBAbout->ScanGraphBox=OnGphBScanAbout;
     BtOkAbout=new Button(115,3,275,25,MWAbout,"Ok",1,0);
     BtOkAbout->Click=BtOkAboutClick;
-    //*******************************************************
+    // *******************************************************
 
     // init synch for synching the screen and the opened video
     PosSynch=0;
@@ -614,7 +615,7 @@ int main (int argc, char ** argv) {
       float avgFps=SynchAverageTime(SynchBuff),
             lastFps=SynchLastTime(SynchBuff);
       //if (lastFps <= 0.1f)
-      //  __dpmi_yield();
+        __dpmi_yield();
 
 
       DgSetCurSurf(rendSurf16);
@@ -638,32 +639,69 @@ int main (int argc, char ** argv) {
                     if (SndDrv->IsPlayingVoice(audioRing[audioLastQueueIdx])) {
                         audioLastAddIdx = audioLastQueueIdx;
                         audioLastQueueIdx = -1;
-                    } else {
-                        audioLastQueueIdx = -1;
-                    }
-                  }
-              }
-
-              if (audioRingCount > 0) {
-                if (audioLastAddIdx == -1) {
-                    AddVoice(audioRing[audioRingStart], 0, true);
-                    audioLastAddIdx = audioRingStart;
-                    audioLastQueueIdx = -1;
-                    countRingAdd++;
-                    audioRingCount--;
-                    audioRingStart=(audioRingStart+1)%AUDIO_RING_SIZE;
-                }
-                if (audioRingCount > 0 && audioLastAddIdx != -1) {
-                    if (QueueVoice(audioRing[audioLastAddIdx],audioRing[audioRingStart], 0, true, false)) {
-                        audioLastQueueIdx = audioRingStart;
-                        countRingQueued++;
-                        audioRingCount--;
-                        audioRingStart=(audioRingStart+1)%AUDIO_RING_SIZE;
-                        if (!VidOpenHasVideo) {
-                            UpdatePlayTime();
+                        if (audioRingCount > 0) {
+                            if (QueueVoice(audioRing[audioLastAddIdx],
+                                           audioRing[audioRingStart], 0, true, false)) {
+                                audioLastQueueIdx = audioRingStart;
+                                countRingQueued++;
+                                audioRingCount--;
+                                audioRingStart = (audioRingStart + 1) % AUDIO_RING_SIZE;
+                            }
                         }
+                    } else {
+                                audioLastQueueIdx = -1;
+                            }
                     }
-                }
+             }
+        }
+        if (audioRingCount > 0) {
+            if (audioLastAddIdx == -1) {
+                AddVoice(audioRing[audioRingStart], 0, true);
+                audioLastAddIdx = audioRingStart;
+                audioLastQueueIdx = -1;
+                countRingAdd++;
+                audioRingCount--;
+                audioRingStart=(audioRingStart+1)%AUDIO_RING_SIZE;
+            }
+            if (audioRingCount > 0) {
+                if (audioLastAddIdx == -1 &&
+                audioLastQueueIdx == -1) {
+
+                AddVoice(audioRing[audioRingStart], 0, true);
+
+                audioLastAddIdx = audioRingStart;
+                audioLastQueueIdx = -1;
+
+                countRingAdd++;
+
+                audioRingCount--;
+                audioRingStart = (audioRingStart + 1) % AUDIO_RING_SIZE;
+            }
+
+            if (audioRingCount > 0 &&
+                audioLastAddIdx != -1 &&
+                audioLastQueueIdx == -1) {
+
+                if (QueueVoice(audioRing[audioLastAddIdx],
+                               audioRing[audioRingStart],
+                               0, true, false)) {
+
+                                                audioLastQueueIdx = audioRingStart;
+
+                                                countRingQueued++;
+
+                                                audioRingCount--;
+                                                audioRingStart = (audioRingStart + 1) % AUDIO_RING_SIZE;
+
+                                                if (!VidOpenHasVideo) {
+                                                    UpdatePlayTime();
+                                                }
+                                            }
+
+
+
+                    }
+
               }
               // handle curve display
               if (DisplaySoundCurve && !VidOpenHasVideo) {
@@ -1765,6 +1803,12 @@ int OpenVideoFFMPEG(char *FileName) {
     }
     /* Init the decoders */
 
+    // loop filter consumes too much CPU power on old hardware
+	 pVideoCodecCtx->skip_loop_filter = AVDISCARD_ALL;
+	// Skip inverse DCT for non reference frames
+	 pVideoCodecCtx->skip_idct = AVDISCARD_NONREF;
+	pVideoCodecCtx->thread_count = 1;
+
     if (avcodec_open2(pVideoCodecCtx, pVideoCodec, NULL) < 0) {
         DestroyVideoFFMPEG();
         return 7;
@@ -1872,8 +1916,6 @@ int OpenAudioFFMPEG(char *FileName) {
                         av_channel_layout_default(&outLayout, (AudioStereo) ? 2 : 1);
                         int dst_linesize = 0;
 
-
-
                         // allocate audio dest resample buffers (rounded by 1024)
                         max_dst_nb_samples = ((VoiceSampleSize/1024)+1)*1024;
                         if (av_samples_alloc_array_and_samples(&audio_dst_data, &audio_dst_linesize, (Audio16Bits) ? 2 : 1,
@@ -1938,6 +1980,7 @@ int OpenAudioFFMPEG(char *FileName) {
     return 0;
 }
 
+// return 1 if new frame found, 0 else
 // return 1 if new frame found, 0 else
 int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop) {
     unsigned int nDrops     = nFramesToDrop;
@@ -2046,26 +2089,46 @@ int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop) {
                         DestroySurf(Surf8bpp);
                     };
                     break;
-                case AV_PIX_FMT_RGB24:
-                    for (int i=0; i < S16->SizeSurf /2 ; i++) {
-                        ((unsigned short*)S16->rlfb)[i] = RGB16(videoFrame->data[0][i*3+0], videoFrame->data[0][i*3+1], videoFrame->data[0][i*3+2]);
+                case AV_PIX_FMT_RGB24: {
+                    unsigned short* outPoint = (unsigned short*)S16->rlfb;
+                    unsigned char* inData = videoFrame->data[0];
+                    int maxSize = S16->SizeSurf >> 1;
+                    for (int currIdx=0; currIdx < maxSize ; currIdx++) {
+                        *outPoint++ = RGB16(inData[0], inData[1], inData[2]);
+                        inData += 3;
                     }
                     break;
-                case AV_PIX_FMT_BGR24:
-                    for (int i=0; i < S16->SizeSurf /2 ; i++) {
-                        ((unsigned short*)S16->rlfb)[i] = RGB16(videoFrame->data[0][i*3+2], videoFrame->data[0][i*3+1], videoFrame->data[0][i*3+0]);
+                }
+                case AV_PIX_FMT_BGR24: {
+                    unsigned short* outPoint = (unsigned short*)S16->rlfb;
+                    unsigned char* inData = videoFrame->data[0];
+                    int maxSize = S16->SizeSurf >> 1;
+                    for (int currIdx=0; currIdx < maxSize ; currIdx++) {
+                        *outPoint++ = RGB16(inData[2], inData[1], inData[0]);
+                        inData += 3;
                     }
                     break;
-                case AV_PIX_FMT_RGBA:
-                    for (int i=0; i < S16->SizeSurf /2 ; i++) {
-                        ((unsigned short*)S16->rlfb)[i] = RGB16(videoFrame->data[0][i*4+0], videoFrame->data[0][i*4+1], videoFrame->data[0][i*4+2]);
+                }
+                case AV_PIX_FMT_RGBA: {
+                    unsigned short* outPoint = (unsigned short*)S16->rlfb;
+                    unsigned char* inData = videoFrame->data[0];
+                    int maxSize = S16->SizeSurf >> 1;
+                    for (int currIdx=0; currIdx < maxSize ; currIdx++) {
+                        *outPoint++ = RGB16(inData[0], inData[1], inData[2]);
+                        inData += 4;
                     }
                     break;
-                case AV_PIX_FMT_BGRA:
-                    for (int i=0; i < S16->SizeSurf /2 ; i++) {
-                        ((unsigned short*)S16->rlfb)[i] = RGB16(videoFrame->data[0][i*4+2], videoFrame->data[0][i*4+1], videoFrame->data[0][i*4+0]);
+                }
+                case AV_PIX_FMT_BGRA: {
+                    unsigned short* outPoint = (unsigned short*)S16->rlfb;
+                    unsigned char* inData = videoFrame->data[0];
+                    int maxSize = S16->SizeSurf >> 1;
+                    for (int currIdx=0; currIdx < maxSize ; currIdx++) {
+                        *outPoint++ = RGB16(inData[2], inData[1], inData[0]);
+                        inData += 4;
                     }
                     break;
+                }
                 default:
                     DgSurf saveSurf;
                     DgGetCurSurf(&saveSurf);
@@ -2096,8 +2159,53 @@ int GetNextFrameFFMPEG(DgSurf *S16, unsigned int nFramesToDrop) {
     return 0;
 }
 
+// Helper: Pack 'outframes' samples from audio_dst_data[0] into the ring buffer.
+// Uses and updates global curVoicePos, audioRingStart, audioRingCount.
+// Returns true if at least one new ring slot was completed.
+static bool packAudioSamplesToRing(int outframes) {
+    if (outframes <= 0 || audioRing == NULL) return false;
 
+    static int typeToSampleSize[] = { 1, 2, 2, 4 };
+    int curVoiceOneSample = typeToSampleSize[audioRing[0]->Type];
+    int outBytes  = outframes * curVoiceOneSample;
+    int voiByteSz = VoiceSampleSize * curVoiceOneSample;
+    bool slotCompleted = false;
+    int  copyOffset = 0;
 
+    while (outBytes > 0) {
+        int LastVoiceIdx = audioRingStart + audioRingCount;
+        if (LastVoiceIdx >= AUDIO_RING_SIZE) LastVoiceIdx -= AUDIO_RING_SIZE;
+
+        int spaceLeft = voiByteSz - curVoicePos;
+        int toCopy    = (outBytes < spaceLeft) ? outBytes : spaceLeft;
+
+        uint8_t *PtrDest = (uint8_t *)audioRing[LastVoiceIdx]->Ptr;
+        memcpy(&PtrDest[curVoicePos], &((uint8_t*)audio_dst_data[0])[copyOffset], toCopy);
+        curVoicePos += toCopy;
+        copyOffset  += toCopy;
+        outBytes    -= toCopy;
+
+        if (curVoicePos >= voiByteSz) {
+            // slot is full — advance ring
+            curVoicePos = 0;
+            slotCompleted = true;
+            if (audioRingCount < AUDIO_RING_SIZE) {
+                audioRingCount++;
+            } else {
+                // Ring full: drop oldest non-playing slot
+                int candidateSlot = audioRingStart;
+                if (candidateSlot != audioLastAddIdx && candidateSlot != audioLastQueueIdx) {
+                    audioRingStart++;
+                    if (audioRingStart >= AUDIO_RING_SIZE) audioRingStart = 0;
+                    countRingOverWritten++;
+                } else {
+                    break; // can't overwrite active slot, stop
+                }
+            }
+        }
+    }
+    return slotCompleted;
+}
 
 int GetNextAudioFrameFFMPEG() {
     int ret_av = 0;
@@ -2112,15 +2220,109 @@ int GetNextAudioFrameFFMPEG() {
             retOpenAudio = 1;
 
             if (pktAudio->stream_index == audioStreamIndex) {
-                avcodec_send_packet(pAudioCodecCtx, pktAudio);
-                retOpenAudio = 2;
-                while (avcodec_receive_frame(pAudioCodecCtx, audioFrame) >= 0) {
+                int send_ret = avcodec_send_packet(pAudioCodecCtx, pktAudio);
+
+            if (send_ret == AVERROR(EAGAIN)) {
+
+                //  Decoder zuerst vollständig drainieren
+                while (1) {
+
+                    int recv_ret = avcodec_receive_frame(pAudioCodecCtx, audioFrame);
+
+                    if (recv_ret == AVERROR(EAGAIN) || recv_ret == AVERROR_EOF) {
+                        break;
+                    }
+
+                    if (recv_ret < 0) {
+                        av_frame_unref(audioFrame);
+                        break;
+                    }
+
+                    static int typeToSampleSize[] = { 1, 2, 2, 4 };
+                    int curVoiceOneSample = typeToSampleSize[audioRing[0]->Type];
+
+                    int out_samples = swr_get_out_samples(
+                        au_convert_ctx,
+                        audioFrame->nb_samples
+                    );
+
+                    int dst_nb_samples = ((out_samples >> 10) + 1) << 10;
+
+                    if (dst_nb_samples > max_dst_nb_samples) {
+
+                        av_freep(&audio_dst_data[0]);
+
+                        if (av_samples_alloc(
+                                audio_dst_data,
+                                &audio_dst_linesize,
+                                (Audio16Bits) ? 2 : 1,
+                                dst_nb_samples,
+                                (Audio16Bits)
+                                    ? AV_SAMPLE_FMT_S16
+                                    : AV_SAMPLE_FMT_U8,
+                                1) < 0)
+                        {
+                            av_frame_unref(audioFrame);
+                            av_packet_unref(pktAudio);
+                            return 0;
+                        }
+
+                        max_dst_nb_samples = dst_nb_samples;
+                    }
+
+                    int outframes = swr_convert(
+                        au_convert_ctx,
+                        audio_dst_data,
+                        max_dst_nb_samples,
+                        (const uint8_t**)audioFrame->data,
+                        audioFrame->nb_samples
+                    );
+
+                    if (outframes > 0) {
+                        countAudFrameDecoded++;
+                    } else {
+                        av_frame_unref(audioFrame);
+                        continue;
+                    }
+
+                    av_frame_unref(audioFrame);
+                }
+
+                // Danach Paket erneut senden
+                send_ret = avcodec_send_packet(pAudioCodecCtx, pktAudio);
+            }
+
+            if (send_ret < 0 && send_ret != AVERROR_EOF) {
+
+                // ungpltiges Paket sauber verwerfen
+                av_packet_unref(pktAudio);
+                continue;
+            }
+
+            retOpenAudio = 2;
+
+            // Normaler Decode-Loop
+            while (1) {
+
+                int recv_ret = avcodec_receive_frame(pAudioCodecCtx, audioFrame);
+
+                if (recv_ret == AVERROR(EAGAIN) ||
+                    recv_ret == AVERROR_EOF)
+                {
+                    break;
+                }
+
+                if (recv_ret < 0) {
+                    av_frame_unref(audioFrame);
+                    break;
+                }
+
                     static int typeToSampleSize[] = { 1, 2, 2, 4 };
                     int curVoiceOneSample = typeToSampleSize[audioRing[0]->Type];
 
                     int out_samples = swr_get_out_samples(au_convert_ctx, audioFrame->nb_samples);
                     // reallocate/resize resample buffer if required
-                    int dst_nb_samples = ((out_samples/1024)+1)*1024;
+                    int dst_nb_samples = ((out_samples >> 10) + 1) << 10;
                     if (dst_nb_samples > max_dst_nb_samples) {
                         av_freep(&audio_dst_data[0]);
                         if (av_samples_alloc(audio_dst_data, &audio_dst_linesize, (Audio16Bits) ? 2 : 1,
@@ -2149,57 +2351,32 @@ int GetNextAudioFrameFFMPEG() {
                         av_frame_unref(audioFrame);
                         continue;
                     }
-                    int LastVoiceIdx = (audioRingStart+audioRingCount)%AUDIO_RING_SIZE;
+                    int LastVoiceIdx = audioRingStart + audioRingCount; if (LastVoiceIdx >= AUDIO_RING_SIZE) LastVoiceIdx -= AUDIO_RING_SIZE;
+                    int outBytes = outframes * curVoiceOneSample; int voiByteSz = VoiceSampleSize * curVoiceOneSample;
 
-
-                    if (curVoicePos/curVoiceOneSample + outframes >= VoiceSampleSize) {
-
-                        if (audioRingCount<AUDIO_RING_SIZE) {
-                                audioRingCount++;
-                        } else {
-                            // ring buffer full overwrite oldest voice
-                            countRingOverWritten ++;
-                            audioRingStart = (audioRingStart+1)%AUDIO_RING_SIZE;
+                    if (curVoicePos + outBytes >= voiByteSz) {
+                        if (outframes > 0) {
+                            if (packAudioSamplesToRing(outframes))
+                                voiceAdded = true;
                         }
-                        // copy remaining required data into current Voice
-                        int remainCopy = (VoiceSampleSize-(curVoicePos/curVoiceOneSample))*curVoiceOneSample;
 
-                        // completely fill last voice
-                        uint8_t *PtrDest = (uint8_t *)audioRing[LastVoiceIdx]->Ptr;
-                        if (remainCopy > 0) {
-                            memcpy(&PtrDest[curVoicePos], audio_dst_data[0], remainCopy);
-                        }
-                        int16_t *genPtr = (int16_t *)audioRing[LastVoiceIdx]->Ptr;
-
-                        curVoicePos = (outframes*curVoiceOneSample) - remainCopy;
-                        LastVoiceIdx = (audioRingStart+audioRingCount)%AUDIO_RING_SIZE;
-                        // handle case where outframes bigger than VoiceSampleSize
-                        while (curVoicePos/curVoiceOneSample > VoiceSampleSize) {
-                            memcpy(audioRing[LastVoiceIdx]->Ptr, &audio_dst_data[0][remainCopy], VoiceSampleSize*curVoiceOneSample);
-                            remainCopy += VoiceSampleSize*curVoiceOneSample;
-                            curVoicePos -= VoiceSampleSize*curVoiceOneSample;
-
-                            if (audioRingCount<AUDIO_RING_SIZE) {
-                                    audioRingCount++;
-                            } else {
-                                // ring buffer full: overwrite oldest voice
-                                countRingOverWritten ++;
-                                audioRingStart = (audioRingStart+1)%AUDIO_RING_SIZE;
+                        {
+                            int delay = (int)swr_get_delay(au_convert_ctx, iOutputSampleRate);
+                            while (delay > 0) {
+                                int flushOut = swr_convert(au_convert_ctx,
+                                                           audio_dst_data, max_dst_nb_samples,
+                                                           NULL, 0);
+                                if (flushOut <= 0) break;
+                                if (packAudioSamplesToRing(flushOut))
+                                    voiceAdded = true;
+                                delay = (int)swr_get_delay(au_convert_ctx, iOutputSampleRate);
                             }
-                            LastVoiceIdx = (audioRingStart+audioRingCount)%AUDIO_RING_SIZE;
                         }
-                        // last chunk ?
-                        if (curVoicePos > 0) {
-                            memset(audioRing[LastVoiceIdx]->Ptr, 0, audioRing[LastVoiceIdx]->Size);
-                            memcpy(audioRing[LastVoiceIdx]->Ptr, &audio_dst_data[0][remainCopy], curVoicePos);
-                        }
-
-                        retOpenAudio = 9;
-                        voiceAdded = true;
-                    } else if (outframes > 0) {
+                    av_frame_unref(audioFrame);
+                    } else if (outBytes > 0) {
                         uint8_t *PtrDest = (uint8_t *)audioRing[LastVoiceIdx]->Ptr;
-                        memcpy(&PtrDest[curVoicePos], audio_dst_data[0], outframes*curVoiceOneSample);
-                        curVoicePos += outframes*curVoiceOneSample; //audioFrame->nb_samples;
+                        memcpy(&PtrDest[curVoicePos], audio_dst_data[0], outBytes);
+                        curVoicePos += outBytes; //audioFrame->nb_samples;
                     }
 
                     /*swr_convert(au_convert_ctx,
@@ -2225,7 +2402,7 @@ int GetNextAudioFrameFFMPEG() {
                     audioRingCount++;
             } else {
                 // ring buffer full: overwrite oldest voice
-                audioRingStart = (audioRingStart+1)%AUDIO_RING_SIZE;
+                audioRingStart++; if (audioRingStart >= AUDIO_RING_SIZE) audioRingStart = 0;
             }
             return 1;
         }
@@ -2375,102 +2552,119 @@ void CloseVidFFMPEG() {
 ///////////////////////////////////////
 // general YUV 2 RGB conversion routine
 ///////////////////////////////////////
-
 void YUV2RGB_F420(DgSurf *S, SYUVData *pYUVDATA) {
-    unsigned char *yFrm    =NULL;
-    unsigned char *uFrm    =NULL;
-    unsigned char *vFrm    =NULL;
-    unsigned char *uFrmNL  =NULL;
-    unsigned char *vFrmNL  =NULL;
-    unsigned int scanlinePtr = S->rlfb;
+	unsigned char *yFrm    =NULL;
+	unsigned char *uFrm    =NULL;
+	unsigned char *vFrm    =NULL;
+	unsigned char *uFrmNL  =NULL;
+	unsigned char *vFrmNL  =NULL;
+	unsigned int scanlinePtr = S->rlfb;
 
-    if(InterpolateUV) {
-       for (int idx = 0; idx <pYUVDATA->height; idx++) {
-           yFrm = (unsigned char *)pYUVDATA->y+(pYUVDATA->y_scan*idx);
-           uFrm = (unsigned char *)pYUVDATA->u+(pYUVDATA->u_scan*(idx>>1));
-           vFrm = (unsigned char *)pYUVDATA->v+(pYUVDATA->v_scan*(idx>>1));
-           // next line pointer
-           if (idx&1) {
-              if (idx<(pYUVDATA->height-1)) {
-                 uFrmNL = (unsigned char *)pYUVDATA->u+(pYUVDATA->u_scan*((idx>>1)+1));
-                 vFrmNL = (unsigned char *)pYUVDATA->v+(pYUVDATA->v_scan*((idx>>1)+1));
-              } else {
-                 uFrmNL = uFrm;
-                 vFrmNL = vFrm;
-              }
-           }
-           for (int iw=0;iw<pYUVDATA->width;iw++) {
-               // interpolate u and v values for odd lines or columns
-               if (idx&1) {
-                  if ((iw&1) && iw<pYUVDATA->width-1) {
-                     uFinal[iw] = (uFrm[iw/2]+uFrmNL[iw/2]+uFrm[iw/2+1]+uFrmNL[iw/2+1])/4;
-                     vFinal[iw] = (vFrm[iw/2]+vFrmNL[iw/2]+vFrm[iw/2+1]+vFrmNL[iw/2+1])/4;
-                  } else {
-                     uFinal[iw] = (uFrm[iw/2]+uFrmNL[iw/2])/2;
-                     vFinal[iw] = (vFrm[iw/2]+vFrmNL[iw/2])/2;
-                  }
-               } else {
-                  if ((iw&1) && iw<pYUVDATA->width-1) {
-                     uFinal[iw] = (uFrm[iw/2]+uFrm[iw/2+1])/2;
-                     vFinal[iw] = (vFrm[iw/2]+vFrm[iw/2+1])/2;
-                  } else {
-                     uFinal[iw] = uFrm[iw>>1];
-                     vFinal[iw] = vFrm[iw>>1];
-                  }
-               }
-           }
-           ScanYUV2RGB16(yFrm, uFinal, vFinal, (unsigned short *)(scanlinePtr), pYUVDATA->width);
-           scanlinePtr+=S->ScanLine;
-       }
-    }
-    else {
-       for (int idx = 0; idx <pYUVDATA->height; idx++)
-       {
-           Scan422YUV2RGB16((unsigned char *)(pYUVDATA->y+(pYUVDATA->y_scan*idx)),
-                (unsigned char *)(pYUVDATA->u+(pYUVDATA->u_scan*(idx>>1))),
-                (unsigned char *)(pYUVDATA->v+(pYUVDATA->v_scan*(idx>>1))),
-                (unsigned short *)(scanlinePtr), pYUVDATA->width);
-           scanlinePtr+=S->ScanLine;
-       }
-    }
+	if(InterpolateUV) {
+		for (int idx = 0; idx <pYUVDATA->height; idx++) {
+			yFrm = (unsigned char *)pYUVDATA->y+(pYUVDATA->y_scan*idx);
+			uFrm = (unsigned char *)pYUVDATA->u+(pYUVDATA->u_scan*(idx>>1));
+			vFrm = (unsigned char *)pYUVDATA->v+(pYUVDATA->v_scan*(idx>>1));
+			// next line pointer
+			if (idx&1) {
+				if (idx<(pYUVDATA->height-1)) {
+					uFrmNL = (unsigned char *)pYUVDATA->u+(pYUVDATA->u_scan*((idx>>1)+1));
+					vFrmNL = (unsigned char *)pYUVDATA->v+(pYUVDATA->v_scan*((idx>>1)+1));
+				} else {
+					uFrmNL = uFrm;
+					vFrmNL = vFrm;
+				}
+			}
+
+			// blockworks saves some cycles
+			int widthEnd = pYUVDATA->width - 1;
+			if (idx&1) {
+				for (int iw=0; iw<widthEnd; iw+=2) {
+					// interpolate u and v values for odd lines or columns
+					uFinal[iw] = (uFrm[iw>>1]+uFrmNL[iw>>1])>>1;
+					vFinal[iw] = (vFrm[iw>>1]+vFrmNL[iw>>1])>>1;
+
+					uFinal[iw+1] = (uFrm[iw>>1]+uFrmNL[iw>>1]+uFrm[(iw>>1)+1]+uFrmNL[(iw>>1)+1])>>2;
+					vFinal[iw+1] = (vFrm[iw>>1]+vFrmNL[iw>>1]+vFrm[(iw>>1)+1]+vFrmNL[(iw>>1)+1])>>2;
+				}
+				if (pYUVDATA->width & 1) {
+					int iw = pYUVDATA->width - 1;
+					uFinal[iw] = (uFrm[iw>>1]+uFrmNL[iw>>1])>>1;
+					vFinal[iw] = (vFrm[iw>>1]+vFrmNL[iw>>1])>>1;
+				}
+			} else {
+				for (int iw=0; iw<widthEnd; iw+=2) {
+					// interpolate u and v values for odd lines or columns
+					uFinal[iw] = uFrm[iw>>1];
+					vFinal[iw] = vFrm[iw>>1];
+
+					uFinal[iw+1] = (uFrm[iw>>1]+uFrm[(iw>>1)+1])>>1;
+					vFinal[iw+1] = (vFrm[iw>>1]+vFrm[(iw>>1)+1])>>1;
+				}
+				if (pYUVDATA->width & 1) {
+					int iw = pYUVDATA->width - 1;
+					uFinal[iw] = uFrm[iw>>1];
+					vFinal[iw] = vFrm[iw>>1];
+				}
+			}
+
+			ScanYUV2RGB16(yFrm, uFinal, vFinal, (unsigned short *)(scanlinePtr), pYUVDATA->width);
+			scanlinePtr+=S->ScanLine;
+		}
+	}
+	else {
+		for (int idx = 0; idx <pYUVDATA->height; idx++)
+		{
+			Scan422YUV2RGB16((unsigned char *)(pYUVDATA->y+(pYUVDATA->y_scan*idx)),
+				(unsigned char *)(pYUVDATA->u+(pYUVDATA->u_scan*(idx>>1))),
+				(unsigned char *)(pYUVDATA->v+(pYUVDATA->v_scan*(idx>>1))),
+				(unsigned short *)(scanlinePtr), pYUVDATA->width);
+			scanlinePtr+=S->ScanLine;
+		}
+	}
 }
 
 void YUV2RGB_F422(DgSurf *S, SYUVData *pYUVDATA) {
-    unsigned char *yFrm    =NULL;
-    unsigned char *uFrm    =NULL;
-    unsigned char *vFrm    =NULL;
-    unsigned int scanlinePtr = S->rlfb;
+	unsigned char *yFrm    =NULL;
+	unsigned char *uFrm    =NULL;
+	unsigned char *vFrm    =NULL;
+	unsigned int scanlinePtr = S->rlfb;
 
-    if(InterpolateUV) {
-       for (int idx = 0; idx <pYUVDATA->height; idx++) {
-           yFrm = (unsigned char *)pYUVDATA->y+(pYUVDATA->y_scan*idx);
-           uFrm = (unsigned char *)pYUVDATA->u+(pYUVDATA->u_scan*idx);
-           vFrm = (unsigned char *)pYUVDATA->v+(pYUVDATA->v_scan*idx);
-           for (int iw=0;iw<pYUVDATA->width;iw++) {
-               if ((iw&1) && iw<pYUVDATA->width-1) {
-                   uFinal[iw] = (uFrm[iw/2]+uFrm[iw/2+1])/2;
-                   vFinal[iw] = (vFrm[iw/2]+vFrm[iw/2+1])/2;
-               } else {
-                  uFinal[iw] = uFrm[iw/2];
-                  vFinal[iw] = vFrm[iw/2];
-               }
-           }
-           ScanYUV2RGB16(yFrm, uFinal, vFinal, (unsigned short *)(scanlinePtr), pYUVDATA->width);
-           scanlinePtr+=S->ScanLine;
-       }
-    }
-    else {
-       for (int idx = 0; idx <pYUVDATA->height; idx++)
-       {
-           Scan422YUV2RGB16((unsigned char *)(pYUVDATA->y+(pYUVDATA->y_scan*idx)),
-                (unsigned char *)(pYUVDATA->u+(pYUVDATA->u_scan*idx)),
-                (unsigned char *)(pYUVDATA->v+(pYUVDATA->v_scan*idx)),
-                (unsigned short *)(scanlinePtr), pYUVDATA->width);
-           scanlinePtr+=S->ScanLine;
-       }
-    }
+	if(InterpolateUV) {
+		for (int idx = 0; idx <pYUVDATA->height; idx++) {
+			yFrm = (unsigned char *)pYUVDATA->y+(pYUVDATA->y_scan*idx);
+			uFrm = (unsigned char *)pYUVDATA->u+(pYUVDATA->u_scan*idx);
+			vFrm = (unsigned char *)pYUVDATA->v+(pYUVDATA->v_scan*idx);
+
+			int widthEnd = pYUVDATA->width - 1;
+			for (int iw=0; iw<widthEnd; iw+=2) {
+				uFinal[iw] = uFrm[iw>>1];
+				vFinal[iw] = vFrm[iw>>1];
+
+				uFinal[iw+1] = (uFrm[iw>>1]+uFrm[(iw>>1)+1])>>1;
+				vFinal[iw+1] = (vFrm[iw>>1]+vFrm[(iw>>1)+1])>>1;
+			}
+			if (pYUVDATA->width & 1) {
+				int iw = pYUVDATA->width - 1;
+				uFinal[iw] = uFrm[iw>>1];
+				vFinal[iw] = vFrm[iw>>1];
+			}
+
+			ScanYUV2RGB16(yFrm, uFinal, vFinal, (unsigned short *)(scanlinePtr), pYUVDATA->width);
+			scanlinePtr+=S->ScanLine;
+		}
+	}
+	else {
+		for (int idx = 0; idx <pYUVDATA->height; idx++)
+		{
+			Scan422YUV2RGB16((unsigned char *)(pYUVDATA->y+(pYUVDATA->y_scan*idx)),
+				(unsigned char *)(pYUVDATA->u+(pYUVDATA->u_scan*idx)),
+				(unsigned char *)(pYUVDATA->v+(pYUVDATA->v_scan*idx)),
+				(unsigned short *)(scanlinePtr), pYUVDATA->width);
+			scanlinePtr+=S->ScanLine;
+		}
+	}
 }
-
 
 void YUV2RGB_F444(DgSurf *S, SYUVData *pYUVDATA) {
     unsigned int width       = pYUVDATA->width;

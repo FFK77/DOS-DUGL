@@ -1,4 +1,4 @@
- %include "param.mac"
+ %include "PARAM.MAC"
 
 ; Multi thread safe functions
 

@@ -19,6 +19,6 @@
 #include "DCONTAIN.h"
 #include "DBMFONT.h"
 #include "DIMAGE.H"
-#include "DIPX.h"
+#include "DIPX.H"
 
 #endif // #ifndef DUGL_H

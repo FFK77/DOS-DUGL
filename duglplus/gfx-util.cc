@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <dugl.h>
+#include <DUGL.h>
 
 // resize a 16bpp DgSurf into an another DgSurf
 void resizeSurf16(DgSurf *SDstSurf,DgSurf *SSrcSurf, bool swapHz = false, bool swapVt = false)

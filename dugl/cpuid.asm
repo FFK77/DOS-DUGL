@@ -1,4 +1,4 @@
-%include "param.mac"
+%include "PARAM.MAC"
 
 ; GLOBAL Function
 GLOBAL  _DetectCPUID,_ExecCPUID,_EnableMTRR
