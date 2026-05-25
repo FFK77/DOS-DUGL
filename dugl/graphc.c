@@ -10,13 +10,8 @@
 #include <string.h>
 #include <sys/movedata.h>
 #include <sys/segments.h>
-
-#include "DUGL.h"
+#include "dugl.h"
 #include "intrdugl.h"
-
-#ifndef outb
-#define outb(port, val) __asm__ __volatile__ ("outb %0, %1" : : "a" ((unsigned char)(val)), "d" ((unsigned short)(port)))
-#endif
 
 // used to convert color
 // lookup table to convert from 8bits paletted BGRA to true color 15,16, 24, 32 bits
@@ -345,10 +340,8 @@ void bar(int x1,int y1,int x2,int y2,int bcol)
 	CBar[5]= CBar[7]= y1;
 	CBar[1]= CBar[3]= y2;
  	ACBar[0]=4;
-	ACBar[1]=(int)&CBar[0];
-	ACBar[2]=(int)&CBar[2];
-	ACBar[3]=(int)&CBar[4];
-	ACBar[4]=(int)&CBar[6];
+	ACBar[1]=&CBar[0]; ACBar[2]=&CBar[2];
+	ACBar[3]=&CBar[4]; ACBar[4]=&CBar[6];
 	Poly(&ACBar, NULL, POLY_SOLID|POLY_FLAG_DBL_SIDED, bcol);
 }
 
@@ -426,8 +419,8 @@ int  CreateSurf(DgSurf **S, int ResHz, int ResVt, char BitsPixel)
     *S = (DgSurf*)malloc(sizeof(DgSurf)+ResHz*ResVt*pixelsize);
     if ((*S) == NULL)
         return 0;
-	cvlfb=(int)(&(*S)[1]);
-	if (cvlfb!=0) {
+	cvlfb=(void*)(&(*S)[1]);
+	if (cvlfb!=NULL) {
 	  (*S)->vlfb=(*S)->rlfb= cvlfb;
 	  (*S)->OffVMem= -1;
 	  (*S)->ResH= ResHz;
@@ -461,7 +454,7 @@ int  CreateSurfBuff(DgSurf **S, int ResHz, int ResVt, char BitsPixel,void *Buff)
     *S = (DgSurf*)malloc(sizeof(DgSurf));
     if ((*S) == NULL)
         return 0;
-    (*S)->vlfb=(*S)->rlfb= (int)Buff; // cast von void pointer zu int
+    (*S)->vlfb=(*S)->rlfb= Buff;
     (*S)->OffVMem= -1;
     (*S)->ResH= ResHz;
     (*S)->ResV= ResVt;
@@ -710,45 +703,30 @@ int std16bppVESAMode[SIZE_STD_VBE16BPP]=
 int DgInit() {
 	VesaInfo VesaInf;
 	__dpmi_regs r;
-	unsigned int i,j,CptMode,curMode,LimitDS,TbMemCopy=1000,TbModeCopy=512;
-	unsigned long BaseDS;
+	unsigned int i,j,CptMode,curMode,LimitDS,BaseDS,TbMemCopy=1000,TbModeCopy=512;
 	char Error=0;
 	short *ListMode;
 
-	if (!DetectMMX()) {
-		printf("DUGL init failed: MMX not detected\n");
+	if (!DetectMMX())
 		return 0;
-	}
-	if (!InitDWorkers(0)) {
-		printf("DUGL init failed: InitDWorkers failed\n");
+	if (!InitDWorkers(0))
 		return 0;
-	}
 
 	bzero(&r,sizeof(__dpmi_regs));
    	r.d.eax = 0x4f00;
 	r.x.es = (__tb>>4)  & 0xffff;
 	r.d.edi = __tb & 0xf;
    	__dpmi_int(0x10, &r);
-	if (r.h.al!=0x4f) {
-		printf("DUGL init failed: VESA BIOS not found (AX: %04x)\n", r.x.ax);
-		return 0;
-	}
+	if (r.h.al!=0x4f) return 0;
 	dosmemget(__tb,sizeof(VesaIntro),&VesaInt);
-	if ((ListMode=(short *)malloc(1024*sizeof(short)))==NULL) {
-		printf("DUGL init failed: Could not allocate memory for mode list\n");
-		return 0;
-	}
+	if ((ListMode=(short *)malloc(1024*sizeof(short)))==NULL) return 0;
 
 	if ((VesaInt.VideoPtr&0xFFFF)>(0xffff-1024)) {
 	  TbMemCopy=0xffff-(VesaInt.VideoPtr&0xFFFF);
 	  TbModeCopy=TbMemCopy/2; }
 	dosmemget(((VesaInt.VideoPtr&0xffff0000)>>12)+
 	             (VesaInt.VideoPtr&0xFFFF), TbMemCopy,ListMode);
-	if ((VesaInt.Sign!=0x41534556) || (VesaInt.HiVers<2)) {
-		printf("DUGL init failed: Invalid VESA signature or version too low\n");
-		free(ListMode);
-		return 0;
-	}
+	if ((VesaInt.Sign!='ASEV') || (VesaInt.HiVers<2)) return 0;
 	VesaHiVers=VesaInt.HiVers;
 	VesaLoVers=VesaInt.LoVers;
 
@@ -758,11 +736,7 @@ int DgInit() {
 	r.x.es = (__tb>>4) & 0xffff;
 	r.d.edi = __tb & 0xf;
    	__dpmi_int(0x10, &r);
-	if (r.h.al!=0x4f) {
-		printf("DUGL init failed: Could not get mode info for 0x101\n");
-		free(ListMode);
-		return 0;
-	}
+	if (r.h.al!=0x4f)  return 0;
 	dosmemget(__tb,sizeof(VesaInfo),&VesaInf);
 
    	dpinf.address=VesaInf.PhysBasePtr; // map LFB
@@ -772,14 +746,12 @@ int DgInit() {
 	if (__dpmi_get_segment_base_address(_my_ds(),&BaseDS)==-1) Error=1;
 	LimitDS=dpinf.address+dpinf.size-1-BaseDS;
 	if (__dpmi_set_segment_limit(_my_ds(),LimitDS)==-1) Error=1;
+	if (!__djgpp_nearptr_enable())
+	  _crt0_startup_flags |=_CRT0_FLAG_NEARPTR;
 	lfb=dpinf.address-BaseDS;
 	SizeVMem=Sizelfb=dpinf.size;
 
-	if (Error) {
-		printf("DUGL init failed: DPMI mapping error\n");
-		free(ListMode);
-		return 0;
-	}
+	if (Error) { free(ListMode); return 0; }
 	i=0; while (ListMode[i]!=-1 && i<TbModeCopy) i++;
 	NbDgfxModes=i;
 	// add standard 8bpp VESA mode if they does not exist
@@ -803,11 +775,8 @@ int DgInit() {
 	    ListMode[NbDgfxModes]=curMode; NbDgfxModes++; }
 	}
 
-	if ((TbDgfxModes=(ModeInfo *)malloc(sizeof(ModeInfo)*(NbDgfxModes+2)))==NULL) {
-		printf("DUGL init failed: Could not allocate memory for mode info table\n");
-		free(ListMode);
-		return 0;
-	}
+	if ((TbDgfxModes=(ModeInfo *)malloc(sizeof(ModeInfo)*(NbDgfxModes+2)))==NULL)
+	  return 0;
 
 	for (CptMode=i=0;i<NbDgfxModes;i++)
 	   { bzero(&r,sizeof(__dpmi_regs));
@@ -841,9 +810,16 @@ int DgInit() {
 	free(ListMode);
 
 	InitVesaPMI();
+//	if (VesaPMIOk) {
+//	  SetPalette=ProtectSetPalette;
+//	  ViewSurf=ProtectViewSurf;
+//	  ViewSurfWaitVR=ProtectViewSurfWaitVR;
+//	} else {
 	  SetPalette=RealSetPalette;
 	  ViewSurf=RealViewSurf;
 	  ViewSurfWaitVR=RealViewSurfWaitVR;
+//	}
+	//if (VesaHiVers>=3) ViewSurf=RealViewSurfSched;
 	EnableVesaMTRR();
 	return 1;
 }
@@ -948,6 +924,7 @@ void InitVesaPMI() {
 	unsigned short *PortMem;
 	int *adressMPIO;
 	unsigned short *sizeMPIO;
+	unsigned short *markerMPIO;
 	int i;
 	bzero(&r,sizeof(__dpmi_regs));
 	r.x.ax = 0x4f0a;
@@ -960,10 +937,10 @@ void InitVesaPMI() {
            _go32_dpmi_lock_data( VesaPMI, r.x.cx);
 		dosmemget(((unsigned int)(r.x.es)<<4)+(unsigned int)(r.x.di),
 		  (unsigned int)(r.x.cx), VesaPMI);
-	    WindowControlPMI=(int)VesaPMI+((unsigned short*)(VesaPMI))[0]; // cast zu int hinzugefuegt
-	    ViewAddressPMI=(int)VesaPMI+((unsigned short*)(VesaPMI))[1]; // da offsets berechnet werden
+	    WindowControlPMI=VesaPMI+((unsigned short*)(VesaPMI))[0];
+	    ViewAddressPMI=VesaPMI+((unsigned short*)(VesaPMI))[1];
 	    SizeVesaPMI=r.x.cx;
-	    SetPalPMI=(int)VesaPMI+((unsigned short*)(VesaPMI))[2]; // pointer zu int mismatch gefixt
+	    SetPalPMI=VesaPMI+((unsigned short*)(VesaPMI))[2];
 	    // scan for io ports
 	    PortMem=VesaPMI+((unsigned short*)(VesaPMI))[3];
 
@@ -976,6 +953,7 @@ void InitVesaPMI() {
 		if (PortMem[i+1]!=0xffff) {
 			adressMPIO=(int*)&PortMem[i+1];
 			sizeMPIO=&PortMem[i+3];
+			markerMPIO=&PortMem[i+4];
 			SizeMPIO=(*sizeMPIO)*2;
 			AddMPIO=*adressMPIO;
 			// map the MPIO
@@ -1068,7 +1046,7 @@ void DgQuit() {
      }
    }
    if (Video) { free(VSurf); VSurf=NULL; Video=0; }
-
+   __djgpp_nearptr_disable();
    __dpmi_free_physical_address_mapping(&dpinf);
    ShiftPal=0;
    DestroyDWorkers();
@@ -1094,15 +1072,11 @@ int DetectMMX() {
 }
 
 void TextMode()
-{	if (Video) {
-		free(VSurf);
-		VSurf=NULL;
-		CurModeVtFreq=0;
-		Video=0;
-	}
+{	if (Video) { free(VSurf); VSurf=CurModeVtFreq=Video=0; }
 	asm ("	mov	$0x3,%eax \n"
 	     "	int	$0x10	");
 }
+
 void GetPaletteDAC()
 {	__dpmi_regs r;
 	if (VesaInt.Capabilities & 1) {  // D0 ( DAC switch)

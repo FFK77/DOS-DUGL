@@ -122,18 +122,25 @@ extern "C" {
 #include <libswresample/swresample.h>
 #include <zlib.h>
 
+#include <go32.h>
+#include <sys/segments.h>
+#include <sys/movedata.h>
+
+#define SIZE_STD_VBE8BPP	5
+#define SIZE_STD_VBE16BPP	5
+
 
 
 // internal
 static int cptLog = 0;
+FILE * fLogPtr = NULL;
 
 #define FLOG(formatMsg, ...) { \
-    FILE *LOGFILE = fopen("./log.txt", "at");\
-    if (LOGFILE!=NULL) {\
-        fprintf(LOGFILE, formatMsg, ##__VA_ARGS__);\
-        fclose(LOGFILE);\
-        cptLog++; \
-    }\
+	if (fLogPtr != NULL) { \
+		fprintf(fLogPtr, formatMsg, ##__VA_ARGS__); \
+		fflush(fLogPtr); \
+		cptLog++; \
+	} \
 }
 
 void ScanYUV2RGB16(void *YSrcPtr, void *USrcPtr, void *VSrcPtr, void *RGB16DstPtr, unsigned int PixelsSize);
@@ -444,6 +451,27 @@ bool IsFileExist(const char *fname);
 bool StringToBool(char *str);
 void LoadConfig();
 void timeToStr(float timeInSec, char *outStr, size_t outStrSize);
+
+extern "C" {
+	#include "../../../dugl/intrdugl.h"
+
+	extern int           std8bppVESAMode[SIZE_STD_VBE8BPP];
+	extern int           std16bppVESAMode[SIZE_STD_VBE16BPP];
+	extern VesaIntro     VesaInt;
+	extern __dpmi_meminfo dpinf;
+	extern unsigned int  lfb;
+	extern unsigned int  Sizelfb;
+	extern void (*SetPalette)(int Dbcol, int Nbcol, void *Tcol);
+	extern void (*ViewSurf)(int NSurf);
+	extern void (*ViewSurfWaitVR)(int NSurf);
+
+	int  DetectMMX();
+	void InitVesaPMI();
+	int  EnableVesaMTRR();
+	void RealSetPalette(int Dbcol, int Nbcol, void *Tcol);
+	void RealViewSurf(int NbSurf);
+	void RealViewSurfWaitVR(int NbSurf);
+}
 
 int main (int argc, char ** argv) {
     if (!DgInit()) {
@@ -932,7 +960,7 @@ int main (int argc, char ** argv) {
 // DUGL Util waitRetrace
 void DGWaitRetrace() {
   if (!SynchScreen) return;
-  if (CurDgfxMode->VModeFlag|VMODE_VGA)
+  if (CurDgfxMode->VModeFlag &  VMODE_VGA)
      WaitRetrace(); // VGA wait retrace
   else
      ViewSurfWaitVR(0);
@@ -2913,3 +2941,200 @@ void timeToStr(float timeInSec, char *outStr, size_t outStrSize) {
     }
 
 }
+
+int LocalDgInit() {
+	__dpmi_regs r;
+	unsigned int i, j, CptMode, curMode, LimitDS, TbMemCopy=1000, TbModeCopy=512;
+	unsigned long BaseDS;
+	char Error=0;
+	short *ListMode;
+	unsigned char vbeInfoRaw[512];
+	unsigned char modeInfoRaw[256];
+
+	FLOG("DEBUG LocalDgInit Start...\n");
+
+	if (!DetectMMX()) {
+		printf("DUGL init failed MMX not detected\n");
+		return 0;
+	}
+	if (!InitDWorkers(0)) {
+		printf("DUGL init failed InitDWorkers failed\n");
+		return 0;
+	}
+
+	// Step 1 Get VBE 2 0 base info
+	bzero(&r,sizeof(__dpmi_regs));
+	r.d.eax = 0x4f00;
+	r.x.es  = (__tb>>4) & 0xffff;
+	r.d.edi = __tb & 0xf;
+	dosmemput("VBE2", 4, __tb);
+	__dpmi_int(0x10, &r);
+
+	if (r.h.al != 0x4f) {
+		printf("DUGL init failed VESA BIOS not found (AX %04x)\n", r.x.ax);
+		return 0;
+	}
+	dosmemget(__tb, 512, vbeInfoRaw);
+	VesaInt.Sign         = *(unsigned int  *)(vbeInfoRaw +  0);
+	VesaInt.LoVers       =                    vbeInfoRaw [ 4];
+	VesaInt.HiVers       =                    vbeInfoRaw [ 5];
+	VesaInt.Capabilities = *(unsigned int  *)(vbeInfoRaw + 10);
+	VesaInt.VideoPtr     = *(unsigned int  *)(vbeInfoRaw + 14);
+	VesaInt.Memory       = *(unsigned short*)(vbeInfoRaw + 18);
+
+	if ((VesaInt.Sign != 0x41534556) || (VesaInt.HiVers < 2)) {
+		printf("DUGL init failed Invalid VESA signature or version < 2.0\n");
+		return 0;
+	}
+	VesaHiVers = VesaInt.HiVers;
+	VesaLoVers = VesaInt.LoVers;
+
+	if (VesaInt.Memory == 0 || VesaInt.Memory > 65535) {
+		VesaInt.Memory = 256;
+	}
+
+	FLOG("DEBUG VBE %d.%d detected, Memory=%d KB\n",
+		 VesaInt.HiVers, VesaInt.LoVers, (int)VesaInt.Memory * 64);
+
+	// Step 2 Read mode list from VideoPtr Far Pointer
+	if ((ListMode = (short *)malloc(1024 * sizeof(short))) == NULL) {
+		printf("DUGL init failed Could not allocate memory for mode list\n");
+		return 0;
+	}
+	if ((VesaInt.VideoPtr & 0xFFFF) > (0xffff - 1024)) {
+		TbMemCopy  = 0xffff - (VesaInt.VideoPtr & 0xFFFF);
+		TbModeCopy = TbMemCopy / 2;
+	}
+	dosmemget(((VesaInt.VideoPtr & 0xffff0000) >> 12) +
+			   (VesaInt.VideoPtr & 0xFFFF), TbMemCopy, ListMode);
+
+	i = 0;
+	while (ListMode[i] != -1 && i < TbModeCopy) i++;
+	NbDgfxModes = i;
+
+	CptMode = 0;
+	for (j = 0; j < SIZE_STD_VBE8BPP; j++) {
+		curMode = std8bppVESAMode[j];
+		if (curMode == 0x10E) continue;
+		for (i = 0; i < NbDgfxModes; i++)
+			if (ListMode[i] == curMode) { CptMode = curMode; }
+		if (CptMode != curMode) { ListMode[NbDgfxModes] = curMode; NbDgfxModes++; }
+	}
+	CptMode = 0;
+	for (j = 0; j < SIZE_STD_VBE16BPP; j++) {
+		curMode = std16bppVESAMode[j];
+		if (curMode == 0x10E) continue;
+		for (i = 0; i < NbDgfxModes; i++)
+			if (ListMode[i] == curMode) { CptMode = curMode; }
+		if (CptMode != curMode) { ListMode[NbDgfxModes] = curMode; NbDgfxModes++; }
+	}
+
+	if ((TbDgfxModes = (ModeInfo *)malloc(sizeof(ModeInfo) * (NbDgfxModes + 2))) == NULL) {
+		printf("DUGL init failed Could not allocate memory for mode info table\n");
+		free(ListMode);
+		return 0;
+	}
+
+	// Step 3 Fully build mode table with LFB filter
+	unsigned int physLfbBase = 0;
+
+	for (CptMode = i = 0; i < NbDgfxModes; i++) {
+		if (ListMode[i] == 0x10E) continue;
+
+		bzero(&r, sizeof(__dpmi_regs));
+		r.x.ax  = 0x4f01;
+		r.x.cx  = ListMode[i];
+		r.x.es  = (__tb >> 4) & 0xffff;
+		r.d.edi = __tb & 0xf;
+		__dpmi_int(0x10, &r);
+
+		dosmemget(__tb, 256, modeInfoRaw);
+
+		unsigned short modeAttr = *(unsigned short*)(modeInfoRaw +  0);
+		unsigned short resX     = *(unsigned short*)(modeInfoRaw + 18);
+		unsigned short resY     = *(unsigned short*)(modeInfoRaw + 20);
+		unsigned char  bpp      =                    modeInfoRaw [25];
+		unsigned char  rSize    =                    modeInfoRaw [31];
+		unsigned char  gSize    =                    modeInfoRaw [33];
+		unsigned char  bSize    =                    modeInfoRaw [35];
+		unsigned int   physBase = *(unsigned int  *)(modeInfoRaw + 40);
+
+		if ((modeAttr & FLAG_SUPP) &&
+			(modeAttr & FLAG_COLOR) &&
+			(modeAttr & FLAG_GRAPH) &&
+			(modeAttr & FLAG_LFB)   &&
+			((bpp == 8) || (bpp == 16 && rSize == 5 && gSize == 6 && bSize == 5))) {
+
+			TbDgfxModes[CptMode].Mode      = ListMode[i];
+			TbDgfxModes[CptMode].ResHz     = resX;
+			TbDgfxModes[CptMode].ResVt     = resY;
+			TbDgfxModes[CptMode].VModeFlag = modeAttr ^ VMODE_VGA;
+			TbDgfxModes[CptMode].BitPixel  = bpp;
+			TbDgfxModes[CptMode].rlfb      = physBase;
+			TbDgfxModes[CptMode].VtFreq    = 60;
+
+			if (physLfbBase == 0 && physBase != 0)
+				physLfbBase = physBase;
+
+			CptMode++;
+		}
+	}
+	NbDgfxModes = CptMode;
+	free(ListMode);
+
+	FLOG("DEBUG %d valid VESA Mode(s) found physLfbBase=%x\n",
+		 NbDgfxModes, physLfbBase);
+
+	if (NbDgfxModes == 0 || physLfbBase == 0) {
+		printf("DUGL init failed No LFB capable VESA mode found\n");
+		return 0;
+	}
+
+	// Step 5 Function pointers
+	SetPalette     = RealSetPalette;
+	ViewSurf       = RealViewSurf;
+	ViewSurfWaitVR = RealViewSurfWaitVR;
+
+	// Step 4 DPMI Mapping with verified LFB address
+	dpinf.address = physLfbBase;
+
+	unsigned long maxVram = 16 * 1024 * 1024;
+	dpinf.size = (unsigned long)VesaInt.Memory * 64 * 1024;
+
+	if (dpinf.size > maxVram) {
+		dpinf.size = maxVram;
+	}
+
+	FLOG("DEBUG DPMI mapping phys=%x size=%lu\n", dpinf.address, dpinf.size);
+	unsigned long baseDS_check = 0;
+	unsigned long limitDS_check = 0;
+
+	if (__dpmi_physical_address_mapping(&dpinf))              Error = 1;
+	if (__dpmi_get_segment_base_address(_my_ds(), &BaseDS) == -1) Error = 1;
+	limitDS_check = __dpmi_get_segment_limit(_my_ds());
+
+	if (dpinf.address + dpinf.size < dpinf.address) {
+		Error = 1;
+	} else {
+		LimitDS = dpinf.address + dpinf.size - 1 - BaseDS;
+	}
+
+	if (!Error && __dpmi_set_segment_limit(_my_ds(), LimitDS) == -1)    Error = 1;
+
+	lfb     = dpinf.address - BaseDS;
+	Sizelfb = dpinf.size;
+
+	if (Error) {
+		printf("DUGL init failed DPMI mapping error\n");
+		return 0;
+	}
+	FLOG("DEBUG lfb=%x must be != 0\n", lfb);
+	if (lfb == 0) {
+		printf("DUGL init failed lfb is 0 after DPMI mapping\n");
+		return 0;
+	}
+
+	FLOG("DEBUG LocalDgInit successful LFB=%x Modes=%d\n", lfb, NbDgfxModes);
+	return 1;
+}
+
