@@ -93,6 +93,15 @@
       (enable; background color; curve color; render mode: blit|transluent)
     - Revert time display to hh:mm:ss instead of xxhxxmxxs
     - Improve Open Dialog File filters
+    14 June 2026: 1.0 alpha 6
+    - Now use FFMPEG 5.1.8 with intel-MMX CPU enabled including assembly optimizations.
+    - Add support of Aspect Ratio with built-in list that could be overwritten by config file.
+    - Add fast video decoding (could be switched by config file), to improve decoding speed of old Hardware (Thanks ThorKa!)
+    - Add Aspect Ratio widget, with capability to switch next one with Mouse Click
+    - F11 keyboard button now switch between Blitting video frame to full View or blitting according to current Aspect Ratio
+    - F12 Keyboard button now switch Aspect Ratio to next one one the List.
+    - Fix Not working VSync on GUI Mode.
+    - Severals other fixes and speed improvement.
 */
 
 #include <stdio.h>
@@ -369,7 +378,7 @@ char SynchBuff[SIZE_SYNCH_BUFF];
 // Windows Handler
 WinHandler *WH;
 // Main window -------------------------------
-String sMainWinName("DUGL Player 1.0 alpha5");
+String sMainWinName("DUGL Player 1.0 alpha6");
 MainWin *MWDPlayer;
 GraphBox *GphBVideo;
 Menu *MWMn;
@@ -420,7 +429,7 @@ NodeMenu TNM[]= {
   { "",	                        4,  &TNM[1], 1, NULL } ,
   { "File",                     3,  &TNM[5], 1, NULL } ,
   { "Play",                     3,  &TNM[8], 1, NULL } ,
-  { "Options",                  8,  &TNM[12], 1, NULL } ,
+  { "Options",                  9,  &TNM[12], 1, NULL } ,
   { "?",                        1,  &TNM[11], 1, NULL } ,
   { "Open        F3",           0,     NULL, 1, OnMenuOpenVid } ,
   { "Close       F4",           0,     NULL, 0, OnMenuCloseVid } ,
@@ -430,6 +439,7 @@ NodeMenu TNM[]= {
   { "Pause/Continue space+tab", 0,     NULL, 1, OnMenuPauseCont } ,
   { "About",                    0,     NULL, 1, OnMenuAbout },
   { "Fit Screen          F11",  0,     NULL, 1, OnMenuFitScreen },
+  { "Next Aspect Ratio   F12",  0,     NULL, 1, OnMsClickSwitchAspectRatio },
   { "Frame dropping      F10",  0,     NULL, 1, OnMenuFrameDrop },
   { "Loop                F9",   0,     NULL, 1, OnMenuLoop },
   { "Vertical Synch      F8",   0,     NULL, 1, OnMenuVSynch },
@@ -1368,9 +1378,9 @@ void GphBDrawAbout(GraphBox *Me) {
    SetTextCol(WH->m_GraphCtxt->WinBlanc);
    if (!AboutDebugInfo) OutText16Mode("\n", AJ_MID);
    FntCol=RGB16(0,255,0); // green
-   OutText16Mode("DUGL Player 1.0 Alpha5 - DOS Audio/Video Player\n", AJ_MID);
+   OutText16Mode("DUGL Player 1.0 Alpha6 - DOS Audio/Video Player\n", AJ_MID);
    FntCol=RGB16(255,255,255); // white
-   OutText16Mode("(C) By FFK 25 April 2026\n\n", AJ_MID);
+   OutText16Mode("(C) By FFK 14 June 2026\n\n", AJ_MID);
    OutText16Mode("Developped using :\n", AJ_MID);
    FntCol=RGB16(255,255,0); // yellow
    OutText16ModeFormat(AJ_MID, midText, 255,"DUGL %s\n",DUGL_VERSION);
