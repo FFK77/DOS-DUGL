@@ -94,7 +94,7 @@
     - Revert time display to hh:mm:ss instead of xxhxxmxxs
     - Improve Open Dialog File filters
     14 June 2026: 1.0 alpha 6
-    - Now use FFMPEG 5.1.8 with intel-MMX CPU enabled including assembly optimizations.
+    - Now use FFMPEG 5.1.8 with pentium-MMX CPU enabled including assembly optimizations.
     - Add support of Aspect Ratio with built-in list that could be overwritten by config file.
     - Add fast video decoding (could be switched by config file), to improve decoding speed of old Hardware (Thanks ThorKa!)
     - Add Aspect Ratio widget, with capability to switch next one with Mouse Click
