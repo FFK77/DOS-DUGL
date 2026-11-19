@@ -5,11 +5,11 @@
 ; GLOBAL Function****
 GLOBAL	_SurfCopy,_DgMemCpy
 GLOBAL	_ProtectSetPalette,_ProtectViewSurf
-GLOBAL	_ProtectViewSurfWaitVR,_WaitRetrace,_GetMaxResVSetSurf
+GLOBAL	_ProtectViewSurfWaitVR,_DgWaitVSync,_GetMaxResVSetSurf, _BlndCol16
 GLOBAL  _SensPoly,_ValidSPoly
 
 ; GLOBAL DATA
-GLOBAL  _DgNanoSurf, _dummyDBMFONT
+GLOBAL  _DgNanoSurf, _dummyDBMFONT, RendFrontSurf, RendSurf
 GLOBAL  QBlue16Mask, QGreen16Mask, QRed16Mask, WBGR16Mask
 GLOBAL  PntInitCPTDbrd, DGDQ0_1_2_3, DGDQInitCPTDbrd, NegDecPosInc, MaxPolyDeltaDim
 GLOBAL  MaskB_RGB16, MaskG_RGB16, MaskR_RGB16, RGB16_PntNeg, Mask2B_RGB16, Mask2G_RGB16, Mask2R_RGB16
@@ -24,6 +24,73 @@ EXTERN	_EnableMPIO,_SelMPIO, _CurViewVSurf
 SECTION .text
 [BITS 32]
 ALIGN 32
+
+_BlndCol16:
+  ARG SrcCol16, 4, DstCol16, 4, BlndVal16, 4
+
+            MOV         ECX,[EBP+BlndVal16] ;
+            MOV         EAX,[EBP+SrcCol16] ;
+            AND         ECX,BYTE BlendMask
+            MOV         EDX,[EBP+DstCol16] ;
+            JZ          .FinBlndCol16
+            CMP         CL,31
+            JZ          .ChooseDst16
+			MOVD		mm0,EDX
+			MOVD		mm1,EDX
+			MOVD		mm2,EDX
+
+			MOV       	EBX,EAX ;
+			MOV       	ECX,EAX ;
+			MOV       	EDX,EAX ;
+			AND			EBX,[QBlue16Mask] ; EBX = Bclr16
+			SHR			EAX,24
+			AND			ECX,[QGreen16Mask] ; ECX = Gclr16
+			AND			AL,BlendMask ; remove any ineeded bits
+			JZ			.FinBlndCol16 ; nothing 0 is the source
+			AND			EDX,[QRed16Mask] ; EDX = Rclr16
+			XOR			AL,BlendMask ; 31-blendsrc
+			MOV			BP,AX
+			SHL			EBP,16
+			OR			BP,AX
+			XOR			AL,BlendMask ; 31-blendsrc
+			INC			AL
+			SHR			DX,5 ; right shift red 5bits
+			IMUL		BX,AX
+			IMUL		CX,AX
+			IMUL		DX,AX
+			MOVD		mm3,EBX
+			MOVD		mm4,ECX
+			MOVD		mm5,EDX
+			MOVD		mm7,EBP
+
+            ;------------
+			PAND		mm0,[QBlue16Mask]
+			PAND		mm1,[QGreen16Mask]
+			PAND		mm2,[QRed16Mask]
+			PMULLW		mm0,mm7 ; [blend_src]
+			PSRLW		mm2,5
+			PMULLW		mm1,mm7 ; [blend_src]
+			PMULLW		mm2,mm7 ; [blend_src]
+			PADDW		mm0,mm3
+			PADDW		mm1,mm4
+			PADDW		mm2,mm5
+			PSRLW		mm0,5
+			PSRLW		mm1,5
+			PAND		mm2,[QRed16Mask]
+			;PAND		mm0,[QBlue16Mask]
+			PAND		mm1,[QGreen16Mask]
+			POR			mm0,mm2
+			POR			mm0,mm1
+
+			MOVD		EAX,mm0
+
+            JMP         .FinBlndCol16
+.ChooseDst16:
+            MOV         EAX,EDX
+.FinBlndCol16:
+
+
+      RETURN
 
 
 ALIGN 32
@@ -282,7 +349,7 @@ _ProtectViewSurfWaitVR:
 
 
 
-_WaitRetrace:
+_DgWaitVSync:
 		MOV		EDX,0x3da
 .wait1:		IN		AL,DX
 		TEST		AL,0x08
@@ -436,3 +503,8 @@ RGBFinMask_III		DD	0,0,0,0
 QBlue16Mask			DW	CMaskB_RGB16,CMaskB_RGB16,CMaskB_RGB16,CMaskB_RGB16
 QGreen16Mask		DW	CMaskG_RGB16,CMaskG_RGB16,CMaskG_RGB16,CMaskG_RGB16
 QRed16Mask			DW	CMaskR_RGB16,CMaskR_RGB16,CMaskR_RGB16,CMaskR_RGB16
+
+; the main Surf 16bpp that DUGL will render to
+;   user mostly has to set this as CurSurf unless other intermediate DgSurf
+RendSurf            DD    0
+RendFrontSurf       DD    0

@@ -827,19 +827,19 @@ _LineBlnd16:
 		MOV       	EBX,EAX ;
 		MOV       	ECX,EAX ;
 		MOV       	EDX,EAX ;
-		AND		EBX,[QBlue16Mask] ; EBX = Bclr16 | Bclr16
-		SHR		EAX,24
-		AND		ECX,[QGreen16Mask] ; ECX = Gclr16 | Gclr16
-		AND		AL,BlendMask ; remove any ineeded bits
-		JZ		.FinLine ; nothing 0 is the source
-		AND		EDX,[QRed16Mask] ; EDX = Rclr16 | Rclr16
-		XOR		AL,BlendMask ; 31-blendsrc
-		MOV		BP,AX
-		SHL		EBP,16
-		OR		BP,AX
-		XOR		AL,BlendMask ; 31-blendsrc
-		INC		AL
-		SHR		DX,5 ; right shift red 5bits
+		AND			EBX,[QBlue16Mask] ; EBX = Bclr16
+		SHR			EAX,24
+		AND			ECX,[QGreen16Mask] ; ECX = Gclr16
+		AND			AL,BlendMask ; remove any ineeded bits
+		JZ			.FinLine ; nothing 0 is the source
+		AND			EDX,[QRed16Mask] ; EDX = Rclr16
+		XOR			AL,BlendMask ; 31-blendsrc
+		MOV			BP,AX
+		SHL			EBP,16
+		OR			BP,AX
+		XOR			AL,BlendMask ; 31-blendsrc
+		INC			AL
+		SHR			DX,5 ; right shift red 5bits
 		IMUL		BX,AX
 		IMUL		CX,AX
 		IMUL		DX,AX

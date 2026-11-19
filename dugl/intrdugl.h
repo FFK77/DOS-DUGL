@@ -1,21 +1,7 @@
 // ----------------------
-//	Standard VESA 2.0
-#define VesaLFB		0x4000
-#define	Preserve	0x8000
-
-#define	SuppMode	1
-//#define	Col		8
-#define	graph		16
-#define	SuppLFB		128
-
-#define FLAG_SUPP	1
-#define FLAG_TTY 	4
-#define FLAG_COLOR	8
-#define FLAG_GRAPH	16
-#define FLAG_NVGA	32
-#define FLAG_NWVGA	64
-#define FLAG_LFB	128
-
+//	Standard VESA 2.0 - 4F02h  Set VBE Mode FLAGS
+#define VBE_SETMODE_LFB		(1 << 14 )
+#define	VBE_SETMODE_PRESERV	(1 << 15 )
 
 typedef struct
 {	int 	Sign		  __attribute__ ((packed));
@@ -69,11 +55,13 @@ typedef struct
     	char	rev2[206];
 } VesaInfo;
 
+
+
 // from graph.asm
-extern int TexXDeb[2048];
-extern int TexXFin[2048],TexYDeb[2048],TexYFin[2048];
-extern int PColDeb[2048],PColFin[2048];
-extern int TPolyAdDeb[2048],TPolyAdFin[2048];
+//extern int TexXDeb[4096];
+//extern int TexXFin[4096],TexYDeb[4096],TexYFin[4096];
+//extern int PColDeb[4096],PColFin[4096];
+//extern int TPolyAdDeb[4096],TPolyAdFin[4096];
 // transf.asm
 extern int TrImgResHz,TrImgResVt;
 extern void *TrBuffImgSrc, *TrBuffImgDst, *TrBuffImgSrcPal;

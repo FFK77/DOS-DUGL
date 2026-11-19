@@ -1,6 +1,15 @@
 #ifndef DGRAPH_H
 #define DGRAPH_H
 
+
+#define DUGL_VERSION "2.0WIP"
+#define DUGL_DATE_DMY "06/02/2026"
+
+#define DUGL_VERSION_MAJOR      2
+#define DUGL_VERSION_MINOR      0
+#define DUGL_VERSION_PATCH      0
+#define DUGL_VERSION_TYPE       'a' // a alpha, b beta, r release
+
 typedef struct {
 	int ScanLine;
     int rlfb;
@@ -19,24 +28,6 @@ typedef struct {
 	int	OrgX, OrgY;
 	int	MaxX, MaxY, MinX, MinY;
 } DgView;
-
-#define VMODE_SUPPORTED         1
-#define VMODE_TTY               4
-#define VMODE_COLOR             8
-#define VMODE_GRAPHIC           16
-#define VMODE_VGA               32
-#define VMODE_VGAW              64
-#define VMODE_LFB               128
-
-typedef struct
-{	int    	ResHz;
-	int	    ResVt;
-	int	    rlfb;
-	short  	Mode;
-	short   VModeFlag;
-	char	BitPixel;
-	char	VtFreq,resv;
-} ModeInfo;
 
 //** CHR FONT FORMAT ****************************
 typedef struct
@@ -66,20 +57,15 @@ typedef struct {
 } DFONT;
 
 // DUGL Graphics Global vars
-extern	int	      NbVDgSurf,NbDgfxModes;
-extern	DgSurf	      *VSurf;
-extern	ModeInfo      *TbDgfxModes, *CurDgfxMode;
-extern	int	      CurModeVtFreq;
-extern	unsigned int  SizeVMem;
-extern  unsigned char VesaHiVers,VesaLoVers;
+extern DgSurf   *RendSurf; // main destination render
+extern DgSurf   *RendFrontSurf; // currently displayed if double buffer enabled
 
 extern DgSurf CurSurf;
-extern int  CurViewVSurf;
-extern unsigned char TbDegCol[256*64];
-extern void *PtrTbColConv;
+extern DgSurf SrcSurf; // The source Surf used by graphic functions as Poly16, PutSurf16, ResizeViewSurf16 ..
+extern DgSurf DgNanoSurf; // One Pixel 16bpp DgSurf (WxH) (1x1) black/RGB16(0,0,0)
+
 extern char LastPolyStatus; // Warning ReadOnly! used internally by (Poly16, RePoly16) / (Poly, RePoly)
                             // Last Rendered Poly Status: ='N' not rendered, ='C' clipped, ='I' In rendererd
-
 
 #ifdef __cplusplus
 extern "C" {
@@ -93,22 +79,54 @@ extern "C" {
 int DgInit();
 // free all ressources allocated to run DUGL
 void DgQuit();
-// CPU tools
-int  DetectCPUID();
-void ExecCPUID(unsigned int VEAX,unsigned int *PEAX, unsigned int *PEBX,
-	       unsigned int *PECX,unsigned int *PEDX);
-int  DetectMMX();
-// Init Any available VESA 8bpp or 16bpp Mode
-int  InitVesaMode(int ResHz, int ResVt, char BitPixel,int NbVPage);
 // Enumerate full screen display modes
 // return count of display modes, and fill attributes of first display mode, if any
 int DgGetFirstDisplayMode(int *width, int *height, int *bpp, int *refreshRate);
 // fill next Display mode attributes if any and return true, else return false
 bool DgGetNextDisplayMode(int *width, int *height, int *bpp, int *refreshRate);
-// Init the standard mode 0x3 text mode
-void TextMode();
 // standard VGA Wait Retrace
-void WaitRetrace();
+void DgWaitVSync();
+
+// Init Main DUGL window
+// for BitPixels only is 16 bpp
+// return 1 if success 0 if fail
+int DgInitMainWindow(const char *title, int ResHz, int ResVt, char BitsPixel);
+// extended parameters
+int DgInitMainWindowX(const char *title, int ResHz, int ResVt, char BitsPixel, int PosX, int PosY, bool FullScreen, bool Borderless, bool ResizeWin);
+// Set MainWindow size
+void DgSetMainWindowSize(int ResHz, int ResVt);
+// Set MainWindow minimum size
+void DgSetMainWindowMinSize(int minResHz, int minResVt);
+// Set MainWindow maximum size
+void DgSetMainWindowMaxSize(int maxResHz, int maxResVt);
+// Get MainWindow size
+void DgGetMainWindowSize(int *ResHz, int *ResVt);
+// Get MainWindow minimum size
+void DgGetMainWindowMinSize(int *minResHz, int *minResVt);
+// Get MainWindow maximum size
+void DgGetMainWindowMaxSize(int *maxResHz, int *maxResVt);
+
+// events
+typedef void (*DgWindowResizeCallBack)(int,int);
+// Set MainWindow resize event call back, pass NULL to disable
+// preresizeCallBack is called with old (w, h), resizeCallBack is called with new (w, h)
+// if RendSurf and or RendFrontSurf are accessed by another thread a DMutex locked/unlocked by this thread is required
+// to avoid concurrency problem, if this thread is very fast a boolean activating a Delay of 10msec with this mutex unlocked
+// and setting the boolean to false to tell that the delay of 10 msec started
+void DgSetMainWindowResizeCallBack(DgWindowResizeCallBack preresizeCallBack, DgWindowResizeCallBack resizeCallBack, PDMutex resizeMutex, bool *requestResizeMutex);
+// Get MainWindow resize event call back, return NULL if disabled
+DgWindowResizeCallBack GetMainWindowResizeCallBack();
+// update window with contents of RendSurf, and swap RendFrontSurf and RendSurf
+void DgUpdateWindow();
+// toggle full screen
+void DgToggleFullScreen(bool fullScreen);
+// Wait vertical Sync
+void DgWaitVSync();
+// Full screen Enabled
+bool DgIsFullScreen();
+// Set/Get Preferred full screen resolution, refresh rate, set 0 DgWindow res, and current display refresh
+void DgSetPreferredFullScreenMode(int width, int height, int refreshRate);
+void DgGetPreferredFullScreenMode(int *width, int *height, int *refreshRate);
 
 // Universal 8bpp 16bpp Surf Manipulation Functions
 // ------------------------------------------------
@@ -120,7 +138,8 @@ void DgGetCurSurf(DgSurf *S);
 // Set Source DgSurf
 void DgSetSrcSurf(DgSurf *S);
 
-int  GetMaxResVSetSurf(); // Max Height in pixels for a surf used with SetSurf
+int GetMaxResVSetSurf(); // Max Height in pixels for a surf used with SetSurf
+
 void SetOrgSurf(DgSurf *S,int LOrgX,int LOrgY);
 // sets DgSurf View
 void SetSurfView(DgSurf *S, DgView *V);
@@ -137,11 +156,10 @@ int CreateSurf(DgSurf **S, int ResHz, int ResVt, char BitsPixel);
 int CreateSurfBuff(DgSurf **S, int ResHz, int ResVt, char BitsPixel,void *Buff);
 int CreateSurfBuffView(DgSurf **S, int ResHz, int ResVt, char BitsPixel, void *Buff, DgView *V);
 void DestroySurf(DgSurf *S);
-// ** WARNING ** should be called only after a successfull InitVESA call
-// set current visible Surf Index
-extern  void (*ViewSurf)(int NbSurf);
-// wait vertical retrace and set current visible Surf Index
-extern  void (*ViewSurfWaitVR)(int NbSurf);
+
+int  ValidSPoly(void *ListPt);
+int  SensPoly(void *ListPt);
+
 
 // Surf conversion Functions
 // -------------------------
@@ -161,78 +179,6 @@ void SurfCopyTrans16(DgSurf *S16Dst, DgSurf *S16Src,int trans);
 void SurfMaskCopyTrans16(DgSurf *S16Dst, DgSurf *S16Src,int trans);
 
 
-// 8 bpp Color palette and light table helper function
-// ---------------------------------------------------
-void PrBuildTbColConv(void *PalBGR1024,float PropBonus);
-void BuildTbColConv(void *PalBGR1024);
-void BuildTbDegCol(void *PalBGR1024);
-void PrBuildTbDegCol(void *PalBGR1024,float PropBonus);
-int  FindCol(int DebCol,int FinCol,int B,int G,int R,void *PalBGR1024);
-int  PrFindCol(int DebCol,int FinCol,
-               int B,int G,int R,void *PalBGR1024,float PropBonus);
-// Set palette :** WARNING ** should be called only after a successfull InitVESA call
-extern  void (*SetPalette)(int Dbcol, int Nbcol, void *BGRA);
-
-// 8 bpp drawing functions
-// -----------------------
-
-void Clear(int clrcol);  // Clear All the current Surf with clrcol
-// *Point is pointer to a struct { int X, int Y };
-void PutPixel(void *Point,int col); // unclipped PutPixel
-int  GetPixel(void *Point); // unclipped GetPixel
-void Line(void *Point1,void *Point2,int col); // Clipped Line
-void LineMap(void *Point1,void *Point2,int col,unsigned int Map); // Mapped line
-// TypePoly
-#define POLY_SOLID				0
-#define POLY_TEXT				1
-#define POLY_MASK_TEXT			2
-#define POLY_FLAT_DEG			3
-#define POLY_DEG				4
-#define POLY_FLAT_DEG_TEXT		5
-#define POLY_MASK_FLAT_DEG_TEXT	6
-#define POLY_DEG_TEXT			7
-#define POLY_MASK_DEG_TEXT		8
-#define POLY_EFF_FLAT_DEG		9
-#define POLY_EFF_DEG			10
-#define POLY_EFF_COLCONV		11
-#define POLY_MAX_TYPE			11
-#define POLY_FLAG_DBL_SIDED		0x80000000
-void Poly(void *ListPt, DgSurf *SS, unsigned int TypePoly, int ColPoly);
-// Redo the last rendered Poly: *ListPt is ignored in this call,
-// if the last Poly is a reversed Double sided poly and POLY_FLAG_DBL_SIDED isn't enabled the RePoly will be skipped
-// user can update *SS, TypePoly, ColPoly and texture coordinates[U,V] using the same Point List pointers the Poly was called with
-// Should be used through REPOLY else LastPolyStatus 'N' will not be ignored
-// if used after Poly16 /not Poly behavior, will be undefined
-void RePoly(void *ListPt, DgSurf *SS, unsigned int TypePoly, int ColPoly);
-// REPOLY provided for convenience as RePoly16 handle only drawn polygones with status 'C' or 'I' to avoid useless calls
-#define REPOLY(ListPt, SS, TypePoly, ColPoly) if (LastPolyStatus!='N') RePoly(ListPt, SS, TypePoly, ColPoly);
-
-int  ValidSPoly(void *ListPt);
-int  SensPoly(void *ListPt);
-
-// Surf blitting functions
-// PType : How the surf is blitted over the surf
-#define NORM_PUT	0 // as it
-#define INV_HZ_PUT	1 // reversed horizontally
-#define INV_VT_PUT	2 // reversed vertically
-void PutSurf(DgSurf *S,int X,int Y,int PType);
-void PutMaskSurf(DgSurf *S,int X,int Y,int PType);
-
-// 8 bpp Drawing helper functions provided for convenience
-// -------------------------------------------------------
-
-void ClearSurf(int clrcol);	// use Poly, clear current View
-void line(int X1,int Y1,int X2,int Y2,int LgCol);
-void linemap(int X1,int Y1,int X2,int Y2,int LgCol,unsigned int Map);
-void putpixel(int X,int Y,int pcol);	// use PutPixel
-void cputpixel(int X,int Y,int pcol); // clipped
-int  getpixel(int X,int Y);	// use GetPixel
-int  cgetpixel(int X,int Y); // clipped
-void Bar(void *Pt1,void *Pt2,int bcol);  // use Poly
-void bar(int x1,int y1,int x2,int y2,int bcol);  // use Poly
-void rect(int x1,int y1,int x2,int y2,int rcol);
-void rectmap(int x1,int y1,int x2,int y2,int rcol,unsigned int rmap);
-
 // 16 bpp drawing functions
 // ------------------------
 
@@ -245,6 +191,9 @@ void Line16(void *Point1,void *Point2,int col);
 void LineMap16(void *Point1,void *Point2,int col,unsigned int Map);
 void LineBlnd16(void *Point1,void *Point2,int col);
 void LineMapBlnd16(void *Point1,void *Point2,int col,unsigned int Map);
+// mix RGB components of src and dst color according to blndVal
+// blndVal = 0 => srcCol, blndVal = 31 => dstCol, other value give intermediate
+int BlndCol16(int srcCol16, int dslCol16, int blndVal);
 
 #define POLY16_SOLID			0
 #define POLY16_TEXT				1
@@ -291,6 +240,11 @@ void rectblnd16(int x1,int y1,int x2,int y2,int rcol);
 void rectmapblnd16(int x1,int y1,int x2,int y2,int rcol,unsigned int rmap);
 
 // 16bpp Surf blitting functions
+// PType : How the surf is blitted over the surf
+#define NORM_PUT	0 // as is
+#define INV_HZ_PUT	1 // reversed horizontally
+#define INV_VT_PUT	2 // reversed vertically
+
 void PutSurf16(DgSurf *S,int X,int Y,int PType);
 void PutMaskSurf16(DgSurf *S,int X,int Y,int PType);
 void PutSurfBlnd16(DgSurf *S,int X,int Y,int PType,int colBlnd);

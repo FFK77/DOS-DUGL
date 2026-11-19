@@ -89,7 +89,7 @@ int  SavePCX(DgSurf *S,const char *Fname,void *PalBGR1024)
 	HeadPCX hpcx;
 	void *BuffOut;
 	char PalRGB[768];
-	int FinIn,ResHz,ResVt,i;
+	int i;
 
 	for (i=0;i<256;i++) {
 	   PalRGB[i*3]=(((char*)(PalBGR1024))[i*4+2]);
@@ -124,10 +124,10 @@ int  SavePCX(DgSurf *S,const char *Fname,void *PalBGR1024)
 	return 1;
 }
 
-int  SaveMemPCX(DgSurf *S,void *Out,void *PalBGR1024)
-{	HeadPCX hpcx;
+int  SaveMemPCX(DgSurf *S,void *Out,void *PalBGR1024) {
+	HeadPCX hpcx;
 	char PalRGB[768];
-	int PtrOut,ResHz,ResVt,i;
+	int PtrOut,i;
 
 	for (i=0;i<256;i++) {
 	   PalRGB[i*3]=(((char*)(PalBGR1024))[i*4+2]);
@@ -156,20 +156,20 @@ int  SaveMemPCX(DgSurf *S,void *Out,void *PalBGR1024)
 	return 1;
 }
 
-int  SizeSavePCX(DgSurf *S)
-{	return (SizeOutRLE((void*)(S->rlfb),S->SizeSurf,S->ResH)+128+769);
+int  SizeSavePCX(DgSurf *S) {
+	return (SizeOutRLE((void*)(S->rlfb),S->SizeSurf,S->ResH)+128+769);
 }
 
 // GIF
 
-int  LoadMemGIF(DgSurf **S,void *In,void *PalBGR1024,int SizeIn)
-{	HeadGIF hgif;
+int  LoadMemGIF(DgSurf **S,void *In,void *PalBGR1024,int SizeIn) {
+	HeadGIF hgif;
 	ExtBlock ExtBGif;
 	DescImgGIF descimg;
-	void *BuffIn,*BuffS,*BuffD,*BuffLZW;
+	void *BuffIn,*BuffS,*BuffD;
 	char PalRGB[768];
-	unsigned char SizeExt,BuffExt[255],SizeBl;
-	int OldCurInGIF,CurInGIF,ResHz,ResVt,i,j;
+	unsigned char SizeExt,SizeBl;
+	int OldCurInGIF,CurInGIF,ResHz,ResVt,i;
 
 	if (SizeIn<sizeof(HeadGIF)) return 0;
 	memcpy(&hgif,In,sizeof(HeadGIF));
@@ -235,7 +235,7 @@ int  LoadGIF(DgSurf **S,const char *Fname,void *PalBGR1024)
 	HeadGIF hgif;
 	ExtBlock ExtBGif;
 	DescImgGIF descimg;
-	void *BuffIn,*BuffS,*BuffD,*BuffLZW;
+	void *BuffIn,*BuffS,*BuffD;
 	char PalRGB[768];
 	unsigned char SizeExt,BuffExt[255],SizeBl;
 	int FinInGIF,DebInGIF,CurInGIF,ResHz,ResVt,i,j;
@@ -326,8 +326,7 @@ int LoadGIF16(DgSurf **S16,char *filename) {
 
 // BMP
 int  LoadMemBMP(DgSurf **S,void *In,void *PalBGR1024,int SizeIn) {
-	FILE *InBMP;
-	int i,j,padd,CurInBMP;
+	int j,padd,CurInBMP;
 	HeadBMP hbmp;
 	InfoBMP ibmp;
 	char *Linedata;
@@ -377,7 +376,7 @@ int  LoadMemBMP(DgSurf **S,void *In,void *PalBGR1024,int SizeIn) {
 }
 int  LoadBMP(DgSurf **S,const char *Fname,void *PalBGR1024) {
 	FILE *InBMP;
-	int i,j,padd;
+	int j,padd;
 	HeadBMP hbmp;
 	InfoBMP ibmp;
 	char *Linedata;

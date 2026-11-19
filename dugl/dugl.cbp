@@ -51,12 +51,14 @@
 		</Unit>
 		<Unit filename="DBMFONT.h" />
 		<Unit filename="DCONTAIN.h" />
+		<Unit filename="DCORE.h" />
+		<Unit filename="DDOSCORE.H" />
+		<Unit filename="DERRS.h" />
 		<Unit filename="DFONT.ASM" />
 		<Unit filename="DFONT.h" />
 		<Unit filename="DFONTC.C">
 			<Option compilerVar="CC" />
 		</Unit>
-		<Unit filename="DGraph.h" />
 		<Unit filename="DIMAGE.H" />
 		<Unit filename="DIPX.H" />
 		<Unit filename="DKeyb.h" />
@@ -103,9 +105,6 @@
 		</Unit>
 		<Unit filename="graph.asm" />
 		<Unit filename="graphM.asm" />
-		<Unit filename="graphc.c">
-			<Option compilerVar="CC" />
-		</Unit>
 		<Unit filename="hzline16.asm">
 			<Option compile="0" />
 			<Option link="0" />
@@ -125,6 +124,12 @@
 		<Unit filename="line16.asm">
 			<Option compile="0" />
 			<Option link="0" />
+		</Unit>
+		<Unit filename="main.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="maindos.c">
+			<Option compilerVar="CC" />
 		</Unit>
 		<Unit filename="math3dc.c">
 			<Option compilerVar="CC" />
