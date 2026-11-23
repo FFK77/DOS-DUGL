@@ -3,13 +3,13 @@
 ; Multi thread safe functions
 
 ; GLOBAL Function****
-GLOBAL	_SurfCopy,_DgMemCpy
+GLOBAL	_SurfCopyRaw,_DgMemCpy
 GLOBAL	_ProtectSetPalette,_ProtectViewSurf
 GLOBAL	_ProtectViewSurfWaitVR,_DgWaitVSync,_GetMaxResVSetSurf, _BlndCol16
 GLOBAL  _SensPoly,_ValidSPoly
 
 ; GLOBAL DATA
-GLOBAL  _DgNanoSurf, _dummyDBMFONT, RendFrontSurf, RendSurf
+GLOBAL  _DgNanoSurf, _dummyDBMFONT, _RendFrontSurf, _RendSurf
 GLOBAL  QBlue16Mask, QGreen16Mask, QRed16Mask, WBGR16Mask
 GLOBAL  PntInitCPTDbrd, DGDQ0_1_2_3, DGDQInitCPTDbrd, NegDecPosInc, MaxPolyDeltaDim
 GLOBAL  MaskB_RGB16, MaskG_RGB16, MaskR_RGB16, RGB16_PntNeg, Mask2B_RGB16, Mask2G_RGB16, Mask2R_RGB16
@@ -102,10 +102,10 @@ _DgMemCpy:
 		MOV		    ESI,[EBP+PMemCSrc]
 		MOV		    EDI,[EBP+PMemCDst]
 		MOV		    EBP,[EBP+PMemCSize]
-        JMP         _SurfCopy.DoMemCpy
+        JMP         _SurfCopyRaw.DoMemCpy
 
 ALIGN 32
-_SurfCopy:
+_SurfCopyRaw:
 	ARG	PDstSrf, 4, PSrcSrf, 4
 		PUSH	    ESI
 		PUSH		EDI
@@ -506,5 +506,5 @@ QRed16Mask			DW	CMaskR_RGB16,CMaskR_RGB16,CMaskR_RGB16,CMaskR_RGB16
 
 ; the main Surf 16bpp that DUGL will render to
 ;   user mostly has to set this as CurSurf unless other intermediate DgSurf
-RendSurf            DD    0
-RendFrontSurf       DD    0
+_RendSurf           DD    0
+_RendFrontSurf      DD    0

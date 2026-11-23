@@ -1,6 +1,7 @@
 #ifndef DERRS_H_INCLUDED
 #define DERRS_H_INCLUDED
 
+#define DG_ERRS_OK                              0
 #define DG_ERRS_SYSTEM_INIT_FAIL                1
 #define DG_ERSS_DWORKERS_INIT_FAIL              2
 #define DG_ERSS_EVENT_MUTEX_INIT_FAIL           3

@@ -24,22 +24,20 @@ typedef struct
 } ModeInfo;
 
 
-extern	int	      NbVDgSurf,NbDgfxModes;
-extern	DgSurf	      *VSurf;
-extern	ModeInfo      *TbDgfxModes, *CurDgfxMode;
-extern	int	          CurModeVtFreq;
-extern	unsigned int  SizeVMem;
-extern  unsigned char VesaHiVers,VesaLoVers;
+extern	int	            NbVDgSurf,NbDgfxModes;
+extern	DgSurf	        *VSurf;
+extern	ModeInfo        *TbDgfxModes, *CurDgfxMode;
+extern	int	            CurModeVtFreq;
+extern	unsigned int    SizeVMem;
+extern  unsigned char   VesaHiVers,VesaLoVers;
 
-extern int  CurViewVSurf;
-extern unsigned char TbDegCol[256*64];
-extern void *PtrTbColConv;
-
+extern int              CurViewVSurf;
+extern unsigned char    TbDegCol[256*64];
+extern void             *PtrTbColConv;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
 
 // CPU tools
 int  DetectCPUID();
@@ -50,6 +48,9 @@ int  DetectMMX();
 int  InitVesaMode(int ResHz, int ResVt, char BitPixel,int NbVPage);
 // Init the standard mode 0x3 text mode
 void TextMode();
+// force banked mode when calling InitVesaMode, else LFB is initialised by default if available
+void SetForceBankedVESA(bool bForceBank);
+bool GetForceBankedVESA();
 
 // 8 bpp Color palette and light table helper function
 // ---------------------------------------------------

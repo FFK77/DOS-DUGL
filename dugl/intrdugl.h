@@ -74,6 +74,7 @@ extern void *TrBuffImgSrc, *TrBuffImgDst, *TrBuffImgSrcPal;
  void TransfB8ToB16Pal();
  void TransfB8ToB15();
  void TransfB16ToB8();
+ int GetPixelSize(int bitsPixel);
 
 #ifdef __cplusplus
               }

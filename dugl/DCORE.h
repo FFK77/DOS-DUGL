@@ -172,7 +172,8 @@ void BlurSurf16(DgSurf *S16Dst, DgSurf *S16Src); // use Blur16
 // 16 bpp Surf Copy/Filter
 // -----------------------
 void DgMemCpy(void *dst, void *src, unsigned int sizeCopy);
-void SurfCopy(DgSurf *Sdst, DgSurf *Ssrc);
+void SurfCopy(DgSurf *Sdst, DgSurf *Ssrc); // the only function that handle copying to screen VRAM (DOS specific)
+void SurfCopyRaw(DgSurf *Sdst, DgSurf *Ssrc);
 void SurfCopyBlnd16(DgSurf *S16Dst, DgSurf *S16Src,int colBlnd);
 void SurfMaskCopyBlnd16(DgSurf *S16Dst, DgSurf *S16Src,int colBlnd);
 void SurfCopyTrans16(DgSurf *S16Dst, DgSurf *S16Src,int trans);

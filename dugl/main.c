@@ -14,9 +14,238 @@
 #include "dugl.h"
 #include "intrdugl.h"
 
-bool enableDoubleBuff = false;
 bool dgEnableFullScreen = false;
 int dgLastErrID = 0;
+DgWindowResizeCallBack dgWindowResizeCallBack = NULL;
+DgWindowResizeCallBack dgWindowPreResizeCallBack = NULL;
+
+///////////////////////------------------------------
+
+
+int  DgInitMainWindow(const char *title, int ResHz, int ResVt, char BitsPixel) {
+    return DgInitMainWindowX(title, ResHz, ResVt, BitsPixel, -1, -1, 0, 0, 0);
+}
+
+int DgInitMainWindowX(const char *, int ResHz, int ResVt, char BitsPixel, int , int , bool , bool , bool ) {
+    if ((BitsPixel != 16 && BitsPixel != 8) || ResHz < 1 || ResVt < 1)
+        return 0;
+
+/*    int posX = SDL_WINDOWPOS_UNDEFINED;
+    int posY = SDL_WINDOWPOS_UNDEFINED;
+    Uint32 FlagCreate = 0;
+
+    // Main windows already initialized ?
+    if (DgWindow != NULL)
+        return 0;
+
+    if (BitsPixel != 16 || ResHz <= 1 || ResVt <= 1)
+        return 0;
+    if (PosX >= 0) posX = PosX;
+    if (PosY >= 0) posY = PosY;
+
+    FlagCreate |= SDL_WINDOW_SHOWN;
+    if (Borderless)
+        FlagCreate |= SDL_WINDOW_BORDERLESS;
+    if (ResizeWin)
+        FlagCreate |= SDL_WINDOW_RESIZABLE;
+
+    if (SDL_GetCurrentDisplayMode(0, &orgDispMode) != 0) {
+        dgLastErrID = DG_ERSS_FAIL_QUERY_DISPLAY_MODE;
+        return 0;
+    }
+
+    DgWindow = SDL_CreateWindow(title, posX, posY, ResHz, ResVt, FlagCreate);
+    if (DgWindow == NULL) {
+        dgLastErrID = DG_ERSS_WINDOW_CREATION_FAIL;
+        return 0;
+    }
+    surfaceW = SDL_GetWindowSurface(DgWindow);
+    if (surfaceW == NULL) {
+        dgLastErrID = DG_ERSS_WINDOW_SURFACE_CREATION_FAIL;
+        return 0;
+    }
+
+    // VSync
+    vsyncRenderer = SDL_CreateSoftwareRenderer(surfaceW);
+    if (vsyncRenderer != NULL) {
+        SDL_RenderSetVSync(vsyncRenderer, 1);
+        vsyncTexture = SDL_CreateTexture(vsyncRenderer, surfaceW->format->format, SDL_TEXTUREACCESS_STREAMING, 1, 1);
+        if (vsyncTexture == NULL) {
+            SDL_DestroyRenderer(vsyncRenderer);
+            vsyncRenderer = NULL;
+        }
+    }
+
+    if (!CreateSurf(&RendSurf, ResHz, ResVt, 16))
+        return 0;
+
+    // create the render Surface 16bpp
+    surf16bpp = SDL_CreateRGBSurfaceWithFormatFrom((void*)(RendSurf->rlfb), ResHz, ResVt, 16, ResHz*2, SDL_PIXELFORMAT_RGB565);
+    if (surf16bpp == NULL) {
+        dgLastErrID = DG_ERSS_FAIL_CREATE_SYSTEM_RGB_SURF;
+        return 0;
+    }
+    if (enableDoubleBuff) {
+        if (!CreateSurf(&RendFrontSurf, ResHz, ResVt, 16))
+            return 0;
+
+        surfFront16bpp = SDL_CreateRGBSurfaceWithFormatFrom((void*)(RendFrontSurf->rlfb), ResHz, ResVt, 16, ResHz*2, SDL_PIXELFORMAT_RGB565);
+        if (surfFront16bpp == NULL) {
+            dgLastErrID = DG_ERSS_FAIL_CREATE_SYSTEM_RGB_SURF;
+            return 0;
+        }
+    }
+
+    dgEnableFullScreen = false;
+    if (FullScreen) {
+        DgToggleFullScreen(true);
+    }
+
+    if (MsScanEvents == 1) {
+        if (LockDMutex(mutexEvents) == 0) {
+            MsZ = 0;
+            ClearMsEvntsStack();
+            EnableMsEvntsStack();
+            MsScanEvents = 1;
+            if (DgWindow != NULL) {
+                if (DgWindow == SDL_GetMouseFocus()) {
+                    MsInWindow = 1;
+                    SDL_ShowCursor(SDL_DISABLE);
+                } else {
+                    MsInWindow = 0;
+                    SDL_ShowCursor(SDL_ENABLE);
+                }
+                DgView defaultMsView;
+                GetSurfView(RendSurf, &defaultMsView);
+                SetMouseRView(&defaultMsView);
+                if (MsInWindow == 1) {
+                    SDL_GetMouseState(&MsX, &MsY);
+                    iSetMousePos(MsX, MsY);
+                    iPushMsEvent(MS_EVNT_MOUSE_MOVE);
+                }
+            }
+            UnlockDMutex(mutexEvents);
+        }
+    }
+    dgWindowResizeCallBack = NULL;
+    dgWindowPreResizeCallBack = NULL;
+    dgResizeWinMutex = NULL;
+    dgRequestResizeWinMutex = NULL;
+*/
+    return 1;
+}
+
+void DgSetMainWindowSize(int ResHz, int ResVt) {
+/*    if (DgWindow != NULL) {
+        SDL_SetWindowSize(DgWindow, ResHz, ResVt);
+    }*/
+}
+
+void DgSetMainWindowMinSize(int minResHz, int minResVt) {
+/*    if (DgWindow != NULL) {
+        SDL_SetWindowMinimumSize(DgWindow, minResHz, minResVt);
+    }*/
+}
+
+void DgSetMainWindowMaxSize(int maxResHz, int maxResVt) {
+/*    if (DgWindow != NULL) {
+        SDL_SetWindowMaximumSize(DgWindow, maxResHz, maxResVt);
+    }*/
+}
+
+void DgGetMainWindowSize(int *ResHz, int *ResVt) {
+/*    if (DgWindow != NULL) {
+        SDL_GetWindowSize(DgWindow, ResHz, ResVt);
+    }*/
+}
+
+void DgGetMainWindowMinSize(int *minResHz, int *minResVt) {
+/*    if (DgWindow != NULL) {
+        SDL_GetWindowMinimumSize(DgWindow, minResHz, minResVt);
+    }*/
+}
+
+void DgGetMainWindowMaxSize(int *maxResHz, int *maxResVt) {
+/*    if (DgWindow != NULL) {
+        SDL_GetWindowMaximumSize(DgWindow, maxResHz, maxResVt);
+    }*/
+}
+
+void DgSetMainWindowResizeCallBack(DgWindowResizeCallBack preresizeCallBack, DgWindowResizeCallBack resizeCallBack, PDMutex resizeMutex, bool *requestResizeMutex) {
+/*    if (DgWindow != NULL) {
+        dgWindowResizeCallBack = resizeCallBack;
+        dgWindowPreResizeCallBack = preresizeCallBack;
+        dgResizeWinMutex = resizeMutex;
+        dgRequestResizeWinMutex = requestResizeMutex;
+    }*/
+}
+
+DgWindowResizeCallBack GetMainWindowResizeCallBack() {
+    return dgWindowResizeCallBack;
+}
+
+int DgPreferredFullSwidth = 0, DgPreferredFullSheight = 0, DgPreferredFullSrefreshRate = 0;
+int DgNFSWidth = 0, DgNFSHeight = 0;
+
+// dummy always full screen
+void DgToggleFullScreen(bool) {
+}
+
+// always full screen
+bool DgIsFullScreen() {
+    return true;
+}
+
+void DgSetPreferredFullScreenMode(int width, int height, int refreshRate) {
+    DgPreferredFullSwidth = (width <= 0) ? 0 : width;
+    DgPreferredFullSheight = (height <= 0) ? 0 : height;
+    DgPreferredFullSrefreshRate = (refreshRate <= 0) ? 0 : refreshRate;
+}
+
+void DgGetPreferredFullScreenMode(int *width, int *height, int *refreshRate) {
+    if (width != NULL) {
+        *width = DgPreferredFullSwidth;
+    }
+    if (height != NULL) {
+        *height = DgPreferredFullSheight;
+    }
+    if (refreshRate != NULL) {
+        *refreshRate = DgPreferredFullSrefreshRate;
+    }
+}
+
+// dummy
+void DgCheckEvents() {
+}
+
+// dummy
+void DgSetWindowIcone(DgSurf) {
+}
+
+void DgUpdateWindow() {
+/*    SDL_Surface *tmpSDLSurf = surf16bpp;
+    DgSurf *tmpSurf;
+    surfaceW = SDL_GetWindowSurface(DgWindow);
+
+    if (RendSurf->rlfb != 0 && surfaceW != NULL) {
+        SDL_BlitSurface( tmpSDLSurf, NULL, surfaceW, NULL );
+        SDL_UpdateWindowSurface(DgWindow);
+
+        if (enableDoubleBuff) {
+            tmpSurf = RendSurf;
+
+            surf16bpp = surfFront16bpp;
+            RendSurf = RendFrontSurf;
+
+            surfFront16bpp = tmpSDLSurf;
+            RendFrontSurf = tmpSurf;
+        }
+    }*/
+}
+
+
+
+//////////////////////-------------------------------
 
 int DgGetLastErr() {
     return dgLastErrID;
